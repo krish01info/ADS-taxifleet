@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Data: never committed. Rebuild it with the repo's scripts.
+data/
+*.parquet
+spark-warehouse/
+
+# Experiment tracking
+mlruns/
+
+# Python tools
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Each person's AI notes. Never committed.
+HANDOFF.md
+memory/
+
+# Local tool settings
+.claude/
