@@ -1,6 +1,6 @@
 # Phase 1 teammate handover
 
-Phase 1 preparation and integration is verified on `himank/phase1-etl`, completed by Himank. Merge into main and data publication remain pending. No downstream phase is complete. Version: `finalized-20261114T190620-6b22f8cb`; release tag planned: `phase1-2024-v1`.
+Phase 1 preparation and integration is verified on `himank/phase1-etl`, completed by Himank. Data publication is complete; merge into main remains pending. No downstream phase is complete. Version: `finalized-20261114T190620-6b22f8cb`; published release tag: `phase1-2024-v1`, pointing to `64d8663ba5a2020b62e97a6fc558c02be00ac571`.
 
 ## Pipeline and authoritative artifacts
 
@@ -105,7 +105,7 @@ All archive members were hashed and compared with originals; a temporary bounded
 
 ## Obtain, extract and verify
 
-Publication is **pending**. Planned [release page](https://github.com/krish01info/ADS-taxifleet/releases/tag/phase1-2024-v1), [data archive](https://github.com/krish01info/ADS-taxifleet/releases/download/phase1-2024-v1/ads-taxifleet-phase1-2024-v1.tar.gz), and [checksums](https://github.com/krish01info/ADS-taxifleet/releases/download/phase1-2024-v1/SHA256SUMS) are not verified live URLs. Until published, obtain these exact two files directly from Himank's local `data/releases/phase1-2024-v1/`.
+Publication is **complete**. Download from the live [release page](https://github.com/krish01info/ADS-taxifleet/releases/tag/phase1-2024-v1), [data archive](https://github.com/krish01info/ADS-taxifleet/releases/download/phase1-2024-v1/ads-taxifleet-phase1-2024-v1.tar.gz), and [checksums](https://github.com/krish01info/ADS-taxifleet/releases/download/phase1-2024-v1/SHA256SUMS). Himank confirmed GitHub asset metadata shows both assets uploaded, with archive size and SHA-256 matching the previously verified local archive. The release tag targets `64d8663ba5a2020b62e97a6fc558c02be00ac571`. This is metadata verification; a fresh download-and-hash check of the hosted archive has not been recorded.
 
 Archive: 355,388,882 bytes. SHA-256: `fa96ebbf0a8663167036089582ced3cb4ce6bc311a57877875af374c04d45eea`. Extract from repo root; the archive restores `data/processed/...` and `data/releases/.../metadata` paths without relocating large tables.
 
@@ -127,14 +127,12 @@ print("All shared files verified")
 PYCODE
 ```
 
-## Manual publication and review
+## Published release and pending merge review
 
-Complete the required commit understanding review first. Then use the actual completed commit as `PHASE1_COMMIT` below. These are user-run commands, not completed actions:
+The release is already published against the completed Phase 1 commit. Keep the existing release tag fixed. To push subsequent documentation corrections and optionally verify a downloaded copy, run:
 
 ```bash
 git push -u origin himank/phase1-etl
-PHASE1_COMMIT=$(git rev-parse HEAD)
-gh release create phase1-2024-v1 --repo krish01info/ADS-taxifleet --target "$PHASE1_COMMIT" --title 'Phase 1 verified data: 2024 and January 2025 drift' --notes-file data/releases/phase1-2024-v1/release_notes.md data/releases/phase1-2024-v1/ads-taxifleet-phase1-2024-v1.tar.gz data/releases/phase1-2024-v1/SHA256SUMS
 gh release view phase1-2024-v1 --repo krish01info/ADS-taxifleet --json tagName,targetCommitish,assets,url
 mkdir -p /tmp/ads-phase1-release-check
 gh release download phase1-2024-v1 --repo krish01info/ADS-taxifleet --dir /tmp/ads-phase1-release-check
@@ -142,7 +140,7 @@ gh release download phase1-2024-v1 --repo krish01info/ADS-taxifleet --dir /tmp/a
 git ls-remote origin refs/tags/phase1-2024-v1
 ```
 
-Check that the tag resolves to the completed commit, both assets have expected sizes, and both README download links open successfully. Only then call publication verified. Open the repository's Compare & pull request page manually: base `main`, compare `himank/phase1-etl`; request Krish's review. Include the verified data version, receipt (57 tests/Ruff), last full-run date 2026-11-15 IST, limitations and publication status. No raw/processed data belong in the PR.
+The reported tag target and GitHub asset metadata match the recorded local archive. Teammates should still verify downloaded assets with `SHA256SUMS`. Open the repository's Compare & pull request page manually: base `main`, compare `himank/phase1-etl`; request Krish's review. Include the verified data version, receipt (57 tests/Ruff), last full-run date 2026-11-15 IST, limitations and completed publication status. Merge into main remains pending. No raw/processed data belong in the PR.
 
 ## Start here for the next assistant
 
