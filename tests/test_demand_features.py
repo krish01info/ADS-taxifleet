@@ -11,13 +11,16 @@ import pytest
 
 from src.demand_features import (
     LAG_COLUMNS,
+    PRETEST_MONTHS,
     add_baseline_columns,
     build_features,
+    choose_method_from_folds,
     build_frozen_profiles,
     find_repo_root,
     fit_count_scale,
     list_feature_columns,
     make_civil_hour_table,
+    make_walk_forward_folds,
     mark_common_rows,
     score_by_group,
     score_forecast,
@@ -229,6 +232,91 @@ def test_score_by_group_and_count_scale():
     assert fit_count_scale([10, 10], [5, 5]) == 2.0
     with pytest.raises(ValueError, match="zero"):
         fit_count_scale([1], [0])
+
+
+def test_walk_forward_folds_for_the_pretest_months():
+    folds = make_walk_forward_folds(PRETEST_MONTHS)
+    assert len(folds) == 7
+    assert folds[0]["train_months"] == ["2024-01", "2024-02", "2024-03"]
+    assert folds[0]["validation_month"] == "2024-04"
+    assert folds[-1]["train_months"] == PRETEST_MONTHS[:9]
+    assert folds[-1]["validation_month"] == "2024-10"
+
+
+def test_walk_forward_folds_never_train_on_the_future():
+    for fold in make_walk_forward_folds(PRETEST_MONTHS):
+        assert max(fold["train_months"]) < fold["validation_month"]
+        assert fold["validation_month"] not in fold["train_months"]
+
+
+def test_walk_forward_folds_never_touch_the_test_months():
+    used_months = set()
+    for fold in make_walk_forward_folds(PRETEST_MONTHS):
+        used_months.update(fold["train_months"] + [fold["validation_month"]])
+    assert max(used_months) == "2024-10"
+    assert "2024-11" not in used_months and "2024-12" not in used_months
+
+
+def test_walk_forward_folds_reject_bad_month_lists():
+    with pytest.raises(ValueError, match="need more than"):
+        make_walk_forward_folds(["2024-01", "2024-02", "2024-03"])
+    with pytest.raises(ValueError, match="consecutive"):
+        make_walk_forward_folds(["2024-01", "2024-02", "2024-04", "2024-05"])
+    with pytest.raises(ValueError, match="consecutive"):
+        make_walk_forward_folds(["2024-04", "2024-03", "2024-02", "2024-01"])
+    with pytest.raises(ValueError, match="consecutive"):
+        make_walk_forward_folds(["2024-01", "2024-02", "2024-02", "2024-03"])
+
+
+FOLD_NAMES = [f"fold{number}" for number in range(1, 8)]
+
+
+def make_fold_scores(model_wape, baseline_wape):
+    """Make a fold-score table with one model and one baseline (WAPE per fold)."""
+    return pd.DataFrame([model_wape, baseline_wape], index=["model", "baseline"], columns=FOLD_NAMES)
+
+
+def test_choose_method_picks_model_that_wins_most_folds():
+    scores = make_fold_scores([10, 10, 10, 10, 10, 10, 10], [12, 12, 12, 12, 12, 12, 12])
+    choice = choose_method_from_folds(scores, ["model"], ["baseline"])
+    assert choice["chosen"] == "model" and choice["model_is_chosen"]
+    assert choice["folds_model_wins"] == 7 and choice["number_of_folds"] == 7
+
+
+def test_choose_method_keeps_baseline_when_model_wins_too_few_folds():
+    # The model is better on average (one huge win) but wins only 4 of 7 folds.
+    scores = make_fold_scores([5, 11, 11, 11, 11, 11, 11], [12, 10, 10, 10, 12, 12, 12])
+    choice = choose_method_from_folds(scores, ["model"], ["baseline"])
+    assert scores.loc["model"].mean() < scores.loc["baseline"].mean()
+    assert choice["folds_model_wins"] == 4
+    assert choice["chosen"] == "baseline" and not choice["model_is_chosen"]
+
+
+def test_choose_method_keeps_baseline_when_model_is_worse_on_average():
+    scores = make_fold_scores([13, 13, 13, 13, 13, 13, 13], [12, 12, 12, 12, 12, 12, 12])
+    choice = choose_method_from_folds(scores, ["model"], ["baseline"])
+    assert choice["chosen"] == "baseline"
+    assert choice["worst_fold_wape"] == 12
+
+
+def test_choose_method_finds_best_model_and_best_baseline_by_mean():
+    scores = pd.DataFrame(
+        [[9] * 7, [10] * 7, [12] * 7, [11] * 7],
+        index=["model_a", "model_b", "baseline_a", "baseline_b"], columns=FOLD_NAMES)
+    choice = choose_method_from_folds(scores, ["model_a", "model_b"], ["baseline_a", "baseline_b"])
+    assert choice["best_model"] == "model_a" and choice["best_baseline"] == "baseline_b"
+    assert choice["chosen"] == "model_a"
+
+
+def test_choose_method_rejects_missing_methods_and_missing_scores():
+    scores = make_fold_scores([10] * 7, [12] * 7)
+    with pytest.raises(ValueError, match="missing methods"):
+        choose_method_from_folds(scores, ["model"], ["no_such_baseline"])
+    with pytest.raises(ValueError, match="at least one"):
+        choose_method_from_folds(scores, [], ["baseline"])
+    scores.loc["model", "fold3"] = np.nan
+    with pytest.raises(ValueError, match="no missing values"):
+        choose_method_from_folds(scores, ["model"], ["baseline"])
 
 
 def test_find_repo_root_finds_this_repository():

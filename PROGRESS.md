@@ -7,6 +7,14 @@ Deadline for Himank's approved Phase 1 batch: **15 November 2026**. The reposito
 ## Phase 1 correction: zone neighbours (2026-11-15, Harsh Rohila)
 
 - The released `zone_neighbours` table was incomplete (346 pairs; exact `touches()` missed shapes that overlap by slivers). Corrected to 651 pairs (1,302 directed edges, 10 connected groups). Fix in `src/phase1_sources.py` (`find_zone_neighbours`), five new tests, details in `docs/decisions.md`. Use the corrected table in `data/processed/phase1/zone_neighbours-fixed-20261115/zone_neighbours` until a corrected release is published. The 692 below and in `docs/phase1_handover.md` is superseded.
+## Walk-forward validation, steps 1–2 of 3 done (2026-11-16, Krish; branch `krish/fixes`)
+
+- Decision (pending team review, see `docs/decisions.md`): choose forecast settings with seven walk-forward monthly folds inside January–October (train Jan–Mar → validate Apr, … train Jan–Sep → validate Oct) instead of one Sep–Oct validation. Test stays Nov–Dec (already examined, so a re-check); Jan 2025 stays drift-only.
+- Done: `make_walk_forward_folds` and `choose_method_from_folds` in `src/demand_features.py` (24 tests in the file pass, ruff passes) and the new notebook `notebooks/03c_forecast_walk_forward.ipynb` (33 cells, 5 figures, fresh run in about 9 minutes, no cell errors). Harsh's `03b` is untouched; 03c writes to `data/forecasts_walk_forward/`.
+- Result of the 7 folds (Apr–Oct, WAPE): best model `hgb_poisson_large` 13.75% against the 4-week mean 13.72%, so they are tied. The model beat the 4-week mean in only 4 of 7 folds (needs 5), so the pre-written rule chose **Mean of previous 4 weeks**. The model wins May–Aug and loses Apr, Sep and Oct. It is clearly better on federal holidays (24.8% against 32.2% pooled) and not better in rain.
+- Nov–Dec (previously examined, diagnostic only): model refit on Jan–Oct MAE 18.86, 4-week mean 19.21, frozen 28-day profile 19.88, last week 23.11 requests per zone-hour. Independent recount from the saved forecast file matches.
+- Next: step 3, test an observed-rain input and dropping the raw month number inside the same folds. Rewrite the decisions entry with Jan–Oct evidence only. Phases 4–7 still use Harsh's old forecast file and were not re-run.
+
 ## Final submission build (2026-11-16, Harsh Rohila; branch `harsh-r/final-submission`)
 
 | Phase | What | Done by | Where to look |

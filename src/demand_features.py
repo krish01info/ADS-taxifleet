@@ -29,6 +29,11 @@ CALENDAR_COLUMNS = [
 GEOGRAPHY_COLUMNS = ["centroid_latitude", "centroid_longitude", "is_airport"]
 LAG_HOLIDAY_COLUMNS = [f"{name}_is_holiday" for name in LAG_COLUMNS]
 LAG_SUMMARY_COLUMNS = ["lag_mean_4w", "lag_7d_ratio"]
+# Months used to choose settings. November-December is the test and is never in here.
+PRETEST_MONTHS = [f"2024-{month_number:02d}" for month_number in range(1, 11)]
+MIN_TRAIN_MONTHS = 3
+# A model must beat the best simple baseline in at least this many folds (of 7) to be chosen.
+MIN_FOLD_WINS = 5
 
 
 def find_repo_root(start=None):
@@ -38,6 +43,31 @@ def find_repo_root(start=None):
         if (folder / "repo_instructions.md").is_file():
             return folder
     raise FileNotFoundError("Run from inside the repository: repo_instructions.md not found.")
+
+
+def make_walk_forward_folds(months, min_train_months=MIN_TRAIN_MONTHS):
+    """Return the walk-forward folds for a list of consecutive months like "2024-01".
+
+    Each fold trains on every month before one month and validates on that month.
+    With ten months and min_train_months=3 the first fold trains on January-March
+    and validates April, and the last trains on January-September and validates
+    October. We use this to choose settings without ever training on the future.
+    """
+    periods = [pd.Period(month, freq="M") for month in months]
+    if len(periods) <= min_train_months:
+        raise ValueError(
+            f"need more than {min_train_months} months to make folds, got {len(periods)}"
+        )
+    for earlier, later in zip(periods, periods[1:]):
+        if later != earlier + 1:
+            raise ValueError(f"months must be consecutive and in order: {earlier} then {later}")
+    folds = []
+    for validation_index in range(min_train_months, len(months)):
+        folds.append({
+            "train_months": list(months[:validation_index]),
+            "validation_month": months[validation_index],
+        })
+    return folds
 
 
 def make_civil_hour_table(zone_hour_rows):
@@ -221,6 +251,46 @@ def score_forecast(actual, predicted):
         "MAE": float(np.abs(error).mean()),
         "RMSE": float(np.sqrt((error ** 2).mean())),
         "WAPE_percent": float(wape),
+    }
+
+
+def choose_method_from_folds(fold_wape, model_names, baseline_names, min_fold_wins=MIN_FOLD_WINS):
+    """Choose the forecast method from the walk-forward fold scores.
+
+    fold_wape has one row per method and one column per fold (WAPE in percent,
+    lower is better). The best model and the best baseline are each the one
+    with the lowest average WAPE. The model is chosen only if it has a lower
+    average than the best baseline AND beats it in at least min_fold_wins folds.
+    Otherwise the simple baseline wins. Returns the choice and the numbers behind it.
+    """
+    if not model_names or not baseline_names:
+        raise ValueError("Need at least one model and one baseline to choose between.")
+    all_names = list(model_names) + list(baseline_names)
+    missing = [name for name in all_names if name not in fold_wape.index]
+    if missing:
+        raise ValueError(f"fold scores are missing methods: {missing}")
+    scores = fold_wape.loc[all_names]
+    if scores.isna().any().any():
+        raise ValueError("fold scores must have no missing values")
+    mean_wape = scores.mean(axis=1)
+    best_model = mean_wape[list(model_names)].idxmin()
+    best_baseline = mean_wape[list(baseline_names)].idxmin()
+    folds_model_wins = int((scores.loc[best_model] < scores.loc[best_baseline]).sum())
+    model_is_lower_on_average = bool(mean_wape[best_model] < mean_wape[best_baseline])
+    model_is_chosen = model_is_lower_on_average and folds_model_wins >= min_fold_wins
+    chosen = best_model if model_is_chosen else best_baseline
+    worst_fold = scores.loc[chosen].idxmax()
+    return {
+        "chosen": chosen,
+        "model_is_chosen": model_is_chosen,
+        "best_model": best_model,
+        "best_baseline": best_baseline,
+        "folds_model_wins": folds_model_wins,
+        "number_of_folds": int(scores.shape[1]),
+        "min_fold_wins": int(min_fold_wins),
+        "mean_wape": {name: float(value) for name, value in mean_wape.items()},
+        "worst_fold": str(worst_fold),
+        "worst_fold_wape": float(scores.loc[chosen, worst_fold]),
     }
 
 
