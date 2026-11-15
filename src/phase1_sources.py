@@ -20,6 +20,8 @@ OPM_URL = "https://www.opm.gov/policy-data-oversight/pay-leave/federal-holidays/
 LCD_DOCUMENTATION = "https://www.ncei.noaa.gov/pub/data/cdo/documentation/LCD_documentation.pdf"
 UTC = timezone.utc
 EST = timezone(timedelta(hours=-5))
+NEIGHBOUR_TOLERANCE_METRES = 1.0
+MIN_SHARED_BOUNDARY_METRES = 10.0
 
 
 def hash_file(path):
@@ -202,6 +204,21 @@ def build_zone_metadata(lookup_path, shape_path, expected_mapped_zones=263):
                           "source_crs": crs.to_string(), "geometry_wkb": bytes(geometry.wkb)})
     if len(zones) != expected_mapped_zones:
         raise ValueError("Expected the verified 263 mapped zones")
+    return zones, find_zone_neighbours(geometries, metres_per_unit)
+
+
+def find_zone_neighbours(geometries, metres_per_unit):
+    """Take zone shapes by id and return directed neighbour edges, in both directions.
+
+    The TLC shapes were drawn with tiny gaps and overlaps along shared borders, so an exact
+    "touches" test misses many real neighbours. Two zones are neighbours when they are
+    within NEIGHBOUR_TOLERANCE_METRES of each other. The shared border length is how much of
+    the second zone's outline lies within that tolerance of the first zone. A shared length
+    of MIN_SHARED_BOUNDARY_METRES or more is a shared border; anything shorter is only a
+    corner contact. The length is approximate: it can be up to about twice the tolerance
+    too long per border, so use it to rank borders, not as a surveyed distance.
+    """
+    tolerance_units = NEIGHBOUR_TOLERANCE_METRES / metres_per_unit
     edges = []
     # 34,453 comparisons for 263 zones is small; a plain loop is easy to explain.
     for zone_id in sorted(geometries):
@@ -209,14 +226,17 @@ def build_zone_metadata(lookup_path, shape_path, expected_mapped_zones=263):
             if neighbour_id <= zone_id:
                 continue
             first, second = geometries[zone_id], geometries[neighbour_id]
-            if first.touches(second):
-                boundary_length = first.boundary.intersection(second.boundary).length * metres_per_unit
-                for start, end in [(zone_id, neighbour_id), (neighbour_id, zone_id)]:
-                    edges.append({"zone_id": start, "neighbour_zone_id": end,
-                                  "shares_boundary": boundary_length > 0,
-                                  "touches_at_point": boundary_length == 0,
-                                  "shared_boundary_metres": boundary_length})
-    return zones, edges
+            if first.distance(second) > tolerance_units:
+                continue
+            nearby_outline = second.boundary.intersection(first.buffer(tolerance_units))
+            boundary_length = nearby_outline.length * metres_per_unit
+            has_shared_border = boundary_length >= MIN_SHARED_BOUNDARY_METRES
+            for start, end in [(zone_id, neighbour_id), (neighbour_id, zone_id)]:
+                edges.append({"zone_id": start, "neighbour_zone_id": end,
+                              "shares_boundary": has_shared_border,
+                              "touches_at_point": not has_shared_border,
+                              "shared_boundary_metres": boundary_length})
+    return edges
 
 
 def parse_weather_number(value, conversion=1.0, offset=0.0):

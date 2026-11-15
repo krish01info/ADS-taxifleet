@@ -6,9 +6,11 @@ from datetime import datetime, timezone
 import pyarrow as arrow
 import pyarrow.parquet as parquet
 import pytest
+from shapely.geometry import box
 
 from src.phase1_sources import (
-    download_missing_files, inventory_sources, parse_weather_number, prepare_weather,
+    download_missing_files, find_zone_neighbours, inventory_sources, parse_weather_number,
+    prepare_weather,
 )
 
 
@@ -84,3 +86,35 @@ def test_existing_valid_input_is_reused_without_network_or_changes(tmp_path, mon
     assert path.read_bytes() == before
     missing = {**source, "path": str(tmp_path / "missing.parquet")}
     assert inventory_sources([missing])[0]["status"] == "missing"
+
+
+def zone_edges(geometries):
+    """Return neighbour edges as {(zone, neighbour): edge} for shapes measured in metres."""
+    edges = find_zone_neighbours(geometries, metres_per_unit=1.0)
+    return {(edge["zone_id"], edge["neighbour_zone_id"]): edge for edge in edges}
+
+
+def test_zones_sharing_a_border_are_neighbours_in_both_directions():
+    edges = zone_edges({1: box(0, 0, 100, 100), 2: box(100, 0, 200, 100)})
+    assert set(edges) == {(1, 2), (2, 1)}
+    assert edges[(1, 2)]["shares_boundary"] and not edges[(1, 2)]["touches_at_point"]
+    assert edges[(1, 2)]["shared_boundary_metres"] == pytest.approx(100, abs=3)
+
+
+def test_tiny_overlap_between_shapes_still_counts_as_a_shared_border():
+    first, second = box(0, 0, 100, 100), box(99.999, 0, 200, 100)
+    assert not first.touches(second)  # the old exact test would have lost this neighbour
+    assert zone_edges({1: first, 2: second})[(1, 2)]["shares_boundary"]
+
+
+def test_tiny_gap_between_shapes_still_counts_as_a_shared_border():
+    assert zone_edges({1: box(0, 0, 100, 100), 2: box(100.3, 0, 200, 100)})[(1, 2)]["shares_boundary"]
+
+
+def test_corner_contact_is_marked_as_point_touch_only():
+    edges = zone_edges({1: box(0, 0, 100, 100), 2: box(100, 100, 200, 200)})
+    assert edges[(1, 2)]["touches_at_point"] and not edges[(1, 2)]["shares_boundary"]
+
+
+def test_distant_zones_are_not_neighbours():
+    assert zone_edges({1: box(0, 0, 100, 100), 2: box(105, 0, 200, 100)}) == {}

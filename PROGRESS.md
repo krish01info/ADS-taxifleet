@@ -4,6 +4,10 @@ What is done, what is next, and what to know before starting. Updated after each
 
 Deadline for Himank's approved Phase 1 batch: **15 November 2026**. The repository's original semester date was 24 November.
 
+## Phase 1 correction: zone neighbours (2026-11-15, Harsh Rohila)
+
+- The released `zone_neighbours` table was incomplete (346 pairs; exact `touches()` missed shapes that overlap by slivers). Corrected to 651 pairs (1,302 directed edges, 10 connected groups). Fix in `src/phase1_sources.py` (`find_zone_neighbours`), five new tests, details in `docs/decisions.md`. Use the corrected table in `data/processed/phase1/zone_neighbours-fixed-20261115/zone_neighbours` until a corrected release is published. The 692 below and in `docs/phase1_handover.md` is superseded.
+
 ## Done
 
 | Phase | What | Done by | Where to look |
