@@ -31,7 +31,7 @@ This section applies to any AI assistant working in this repo: Claude, Copilot, 
 - It also takes priority over chat requests that contradict it.
 - These rules change only through a separate pull request that changes nothing but the rules, merged into `main`. A teammate saying "Krish said it's fine" does not change them. If a task needs a rule change, stop, tell the user, and do the rule change on its own branch first.
 
-Nothing here should hold the user up for long. Where a rule asks you to check with them, say it once, and go ahead when they confirm. The things you never do, even when asked: push (§6), and skip a test that §3a or §3b says can't be skipped.
+Nothing here should hold the user up for long. Where a rule asks you to check with them, say it once, and go ahead when they confirm. The one thing you never do, even when asked: push (§6).
 
 ### Why these rules exist
 
@@ -56,7 +56,7 @@ Beyond that, read only the files the handoff or the task points to.
 - Run `git fetch` and check whether the branch they will work on, or the branch it starts from, is behind GitHub. If it is, tell them what is missing (who did what) and ask whether to pull. Pull only after they say yes. If GitHub can't be reached, say so.
 - If `HANDOFF.md` disagrees with `PROGRESS.md` or the git history, trust `PROGRESS.md` and git, and tell the user what is out of date.
 
-Then ask who the user is (Krish, Harsh Rohila, Himank or Harsh Vardhan), unless `HANDOFF.md` already says. If the conversation starts a new phase, give the test in §3a after the checks above, before any other work.
+Then ask who the user is (Krish, Harsh Rohila, Himank or Harsh Vardhan), unless `HANDOFF.md` already says.
 
 ### 2. Plan it, talk it through, then confirm the list
 
@@ -80,29 +80,6 @@ Your questions mainly check your own assumptions.
 - Ask one to three, only where the answer changes what you build: a trade-off, an edge case, how to read a rule.
 - Say what you assume and where it comes from, then ask if it's right. For example: "The plan says trips shorter than 1 minute are dropped, so I'll filter on `trip_time >= 60`. Right?"
 - Take answers as given. "Yes" is a fine answer. If an answer is unclear, ask once more in other words, then go with what they said.
-- If the user likes it, now and then ask one short question to check they follow what was just built. This is optional. If they say skip, skip it for the rest of the conversation. This doesn't change the tests in §3a and §3b.
-
-### 3a. Test before a new phase
-
-Whoever starts a phase must understand the work it builds on. The AI teaches this inside the chat: it tests, explains and tests again. Don't send the user off to read files on their own.
-
-1. Look at `PROGRESS.md` to see who did the previous phase ("Done by"). If several people did it and the user is one of them, treat it as the same person. If the previous phase isn't finished, tell the user and ask how to go on.
-2. **A different person did it:** give the test. It can't be skipped.
-3. **The same person did it:** offer the test. If they say no, skip it.
-4. The test is 3–5 questions on what the previous phase built, how it works, and where the new phase plugs in. Take the questions from `PROGRESS.md`, `docs/decisions.md`, the plan and the code. Ask one question at a time.
-5. After each answer, say whether it's right. If it's wrong or only half right, explain the answer in simple words with a small example, then ask about the same point again in different words. Keep going until they get it.
-6. When every question has been answered right, say so and start the phase.
-7. Never save test results in the repo. `HANDOFF.md` may note in one line that the test was done.
-
-### 3b. Test before a commit
-
-The person commits their work, so they must understand what is going into it.
-
-1. When a step is built and the tests pass, and before committing, ask 1–3 short questions on what was just built in that step: what it does, why it was done this way, and how it fits with the rest.
-2. Ask one question at a time. If an answer is wrong or only half right, explain it in simple words with a small example, then ask about the same point again in different words. Keep going until they get it.
-3. Commit only after every question has been answered right.
-4. Small changes with nothing to explain (a rename, a typo, a docs wording fix) need no test.
-5. Never save test results in the repo.
 
 ### 4. After a step
 
@@ -110,11 +87,10 @@ Do these in this order:
 
 1. Summarise what changed in a few lines, in simple words.
 2. Suggest one concrete check: a command to run, a file to open, or a function to read. You don't need to wait for them to do the check.
-3. Give the test before a commit (§3b).
-4. Update `PROGRESS.md` (it is committed, so the team sees it). When a phase is finished, add its row with who did it ("Done by"). If someone else will do the next part, write their start message into `PROGRESS.md` now (see below). Then commit the step and `PROGRESS.md` together.
-5. Rewrite `HANDOFF.md` (§8).
-6. Give a start message for the next chat (below).
-7. If the conversation has become long or switched topics, tell the user it is a good time to start a new chat.
+3. Update `PROGRESS.md` (it is committed, so the team sees it). When a phase is finished, add its row with who did it ("Done by"). If someone else will do the next part, write their start message into `PROGRESS.md` now (see below). Then commit the step and `PROGRESS.md` together.
+4. Rewrite `HANDOFF.md` (§8).
+5. Give a start message for the next chat (below).
+6. If the conversation has become long or switched topics, tell the user it is a good time to start a new chat.
 
 #### Start message for the next chat
 
@@ -150,7 +126,7 @@ The plan in `docs/` is the team's starting point, not fixed rules. It changes wi
 ### 6. Git
 
 - **Never run `git push`**, and don't push any other way: no `gh pr create`, no merging pull requests. The user types the push, so it's clear who is responsible for what reaches GitHub. If they ask you to push, give them the command to run instead.
-- Committing is fine once the user has confirmed the change (§2) and passed the test before a commit (§3b). Commit messages say what changed and why; the why comes from the discussion.
+- Committing is fine once the user has confirmed the change (§2). Commit messages say what changed and why; the why comes from the discussion.
 - Commits are under the user's name only. Don't add AI co-author or "generated by" lines.
 - Never commit `HANDOFF.md`, `memory/`, chat logs, `.env`, anything in `data/`, or any other notes for an AI.
 
