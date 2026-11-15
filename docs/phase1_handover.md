@@ -1,5 +1,11 @@
 # Phase 1 teammate handover
 
+> **Corrections (2026-11-16, found by independent audit; see `docs/decisions.md`).**
+> 1. `zone_neighbours` below (692 edges) is incomplete: it missed 305 real neighbouring pairs. The corrected table has 1,302 directed edges (651 pairs) and is rebuilt by `notebooks/rebuild_zone_neighbours.py`; use it instead of the table in `table_index.json` until a corrected release is published.
+> 2. "259,885,329 cleaned rows" is the number of INPUT rows. The cleaning flags rows instead of deleting them: 257,269,699 were accepted and 2,615,630 quarantined.
+> 3. The pair tables are served from the earlier `available-...` run folder, as `table_index.json` shows; the `finalized-...` folder has no pair tables.
+> 4. `tests/conftest.py` no longer calls `time.tzset()` on Windows. Spark 4.0.1 still needs Java 17 or 21; the README has a Docker command that runs the Phase 1 tests.
+
 Phase 1 preparation and integration is verified on `himank/phase1-etl`, completed by Himank. Data publication is complete; merge into main remains pending. No downstream phase is complete. Version: `finalized-20261114T190620-6b22f8cb`; published release tag: `phase1-2024-v1`, pointing to `64d8663ba5a2020b62e97a6fc558c02be00ac571`.
 
 ## Pipeline and authoritative artifacts
