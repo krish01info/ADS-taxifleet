@@ -7,6 +7,23 @@ Deadline for Himank's approved Phase 1 batch: **15 November 2026**. The reposito
 ## Phase 1 correction: zone neighbours (2026-11-15, Harsh Rohila)
 
 - The released `zone_neighbours` table was incomplete (346 pairs; exact `touches()` missed shapes that overlap by slivers). Corrected to 651 pairs (1,302 directed edges, 10 connected groups). Fix in `src/phase1_sources.py` (`find_zone_neighbours`), five new tests, details in `docs/decisions.md`. Use the corrected table in `data/processed/phase1/zone_neighbours-fixed-20261115/zone_neighbours` until a corrected release is published. The 692 below and in `docs/phase1_handover.md` is superseded.
+## Final submission build (2026-11-16, Harsh Rohila; branch `harsh-r/final-submission`)
+
+| Phase | What | Done by | Where to look |
+|---|---|---|---|
+| 2 | EDA and revised H1 (demand differs by zone and hour) | Krish | `notebooks/02_eda_h1.ipynb` |
+| 3 | Forecast. First version (calendar only) by Krish; Phase 3b with 7/14/21/28-day lags, gradient boosting, baselines, SHAP | Krish, Harsh Rohila | `notebooks/03_forecast.ipynb`, `notebooks/03b_forecast_with_lags.ipynb`, `src/demand_features.py` |
+| 4 | Fleet simulator (15-minute slots, six placement policies) | Harsh Rohila | `src/fleet_sim.py`, `notebooks/04_simulator.py` |
+| 5 | Launch-area optimiser, bridge links, fixed baseline area | Harsh Rohila | `src/launch_area.py`, `notebooks/05_launch_area.py` |
+| 6 | Tests of H2–H5 (paired Wilcoxon, pre-registered verdict rule, sensitivity, fairness) | Harsh Rohila | `src/hypothesis_tests.py`, `notebooks/06_hypothesis_tests.py` |
+| 7 | Drift check on January 2025, small Docker forecast API, local MLflow | Harsh Rohila | `src/drift_monitor.py`, `notebooks/07_drift_check.py`, `service/` |
+| 8 | Report in the official template (Word) | In progress | `docs/final_report.md`, `docs/build_report_docx.py` |
+
+- Verdicts (previously examined Nov–Dec 2024, not a pristine test): H2 not supported; H3 not supported in the baseline area (supported in the chosen area); H4 inconclusive; H5 not supported; a post hoc follow-up (H2b, simulator-chosen 84-zone area) is supported at all three fleet sizes. Details and the reasons for every choice are in `docs/decisions.md` ("Final phases 3b–7").
+- Independent checks of Phase 1 and Krish's numbers (raw-file recounts, hashes, weather join, travel-time reference) all matched except the neighbour table, now corrected.
+- Tests: run with `pytest --noconftest` in the Python 3.14 analysis environment (`tests/conftest.py` needs Spark and `time.tzset`, so the Spark tests need Linux, Java 17/21 and Python 3.11).
+- Not done: a pristine test month, a live data feed, enforcement of the minimum service level, bridge-aware matching in the simulator.
+
 ## Local branch prepared for user push (2026-11-15)
 
 - Branch: `krish/eda-forecast-availability-fix`, based on Himank's Phase 1 work (`4278280`). Research decisions committed separately from notebook/test implementation.
