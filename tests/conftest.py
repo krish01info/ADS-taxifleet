@@ -13,7 +13,8 @@ def phase1_spark():
     """Use a UTC session and two local workers; downloaded trip files are never required."""
     os.environ["PYSPARK_PYTHON"] = sys.executable
     os.environ["TZ"] = "UTC"
-    time.tzset()
+    if hasattr(time, "tzset"):  # not available on Windows; Spark gets its time zone from the config below
+        time.tzset()
     os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
     session = (SparkSession.builder.master("local[2]").appName("phase1-integration-tests")
                .config("spark.driver.bindAddress", "127.0.0.1").config("spark.ui.enabled", "false")

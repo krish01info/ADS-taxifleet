@@ -48,8 +48,8 @@ import shapely
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from src import fleet_sim, launch_area
-from src import hypothesis_tests as ht
+from src import fleet_sim, launch_area  # noqa: E402
+from src import hypothesis_tests as ht  # noqa: E402
 
 MAIN_TEST_SCRIPT = "notebooks/06_hypothesis_tests.py"
 
