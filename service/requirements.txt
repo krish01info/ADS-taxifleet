@@ -1,0 +1,11 @@
+# Runtime packages of the forecast service, pinned to the versions the tests ran with
+# (Python 3.14 on Windows). Tests also need httpx==0.28.1 and pytest, which the image does not.
+fastapi==0.163.1
+uvicorn==0.54.0
+pydantic==2.14.3
+pandas==3.1.1
+numpy==2.5.4
+scipy==1.18.1
+scikit-learn==1.9.1
+joblib==1.6.0
+tzdata==2026.6

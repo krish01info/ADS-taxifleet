@@ -1,0 +1,13 @@
+# Phase 1: local Spark cleaning, synthetic tests, notebook execution and code checks.
+# Supported runtime: Python 3.11 and Java 17 or 21 (Spark 4.0.1).
+pyspark==4.0.1
+pytest==9.1.1
+ruff==0.14.4
+nbformat==5.10.4
+nbclient==0.10.4
+ipykernel==7.2.0
+pyarrow==24.0.0
+# Explicit shapefile reading, topology and CRS/units for Phase 1 integration.
+pyshp==2.3.1
+shapely==2.1.2
+pyproj==3.7.2

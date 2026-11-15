@@ -1,0 +1,1169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Robotaxi Fleet Simulation</title>
+<style>
+/* Layout: sticky tab bar over one tab at a time; the map tab is the centrepiece.
+   Palette: cool slate neutrals, one navy accent, and four fixed map colours
+   (idle grey, rider green, empty-drive blue, lost-request red) plus amber for demand. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --surface-2: #eaeef3;
+  --ink: #131923;
+  --muted: #566170;
+  --line: #d6dce4;
+  --accent: #1c3d73;
+  --accent-ink: #ffffff;
+  --focus: #1c6fe0;
+  --demand: #e9890b;
+  --map-bg: #f7f9fb;
+  --outside: #e4e8ee;
+  --zone-line: #b9c1cc;
+  --car-idle: #7b8591;
+  --car-loaded: #12985f;
+  --car-empty: #2a6fd1;
+  --lost: #d02f2f;
+  --good: #0d7a4e;
+  --good-bg: #dff3e9;
+  --bad: #b3261e;
+  --bad-bg: #fbe3e1;
+  --warn: #8a5a00;
+  --warn-bg: #fdefc8;
+  --c1: #2a78d6;
+  --c2: #eb6834;
+  --c3: #1baf7a;
+  --c4: #c0479f;
+  --shadow: 0 1px 2px rgba(19, 25, 35, 0.06), 0 4px 14px rgba(19, 25, 35, 0.05);
+  --font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1319; --surface: #161c24; --surface-2: #1f2730; --ink: #e8edf3; --muted: #9ba7b6;
+    --line: #2b3440; --accent: #8fb6ff; --accent-ink: #0e1319; --focus: #7db0ff; --demand: #f0a43a;
+    --map-bg: #121820; --outside: #1c232c; --zone-line: #36414e; --car-idle: #8b95a1;
+    --car-loaded: #3fcf92; --car-empty: #5ca6ff; --lost: #ff6464; --good: #52d49b; --good-bg: #123626;
+    --bad: #ff8d84; --bad-bg: #411a17; --warn: #f2c25b; --warn-bg: #3a2c0a;
+    --c1: #5ca6ff; --c2: #ff8a5c; --c3: #3fcf92; --c4: #e57cc4;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1319; --surface: #161c24; --surface-2: #1f2730; --ink: #e8edf3; --muted: #9ba7b6;
+  --line: #2b3440; --accent: #8fb6ff; --accent-ink: #0e1319; --focus: #7db0ff; --demand: #f0a43a;
+  --map-bg: #121820; --outside: #1c232c; --zone-line: #36414e; --car-idle: #8b95a1;
+  --car-loaded: #3fcf92; --car-empty: #5ca6ff; --lost: #ff6464; --good: #52d49b; --good-bg: #123626;
+  --bad: #ff8d84; --bad-bg: #411a17; --warn: #f2c25b; --warn-bg: #3a2c0a;
+  --c1: #5ca6ff; --c2: #ff8a5c; --c3: #3fcf92; --c4: #e57cc4;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4); color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { font-size: clamp(16px, 0.55vw + 12px, 22px); }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 48px;
+}
+h1, h2, h3, h4 { text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: 1.7rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.5rem; margin-bottom: 6px; }
+h3 { font-size: 1.12rem; }
+p { margin: 0 0 0.6em; }
+.wrap { max-width: 1500px; margin: 0 auto; }
+button, select, input { font: inherit; color: inherit; }
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid var(--focus); outline-offset: 2px;
+}
+.num { font-variant-numeric: tabular-nums; }
+
+/* header + tabs */
+.top { padding: 18px 0 6px; display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.top .sub { color: var(--muted); margin-top: 4px; max-width: 70ch; }
+.theme-btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.tabbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--bg);
+  display: flex; gap: 6px; overflow-x: auto; padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg); }
+.tabbar button {
+  border: 1px solid transparent; background: transparent; border-radius: 10px; padding: 8px 14px; cursor: pointer;
+  font-weight: 600; white-space: nowrap; color: var(--muted);
+}
+.tabbar button:hover { background: var(--surface-2); color: var(--ink); }
+.tabbar button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.tab { padding-top: 18px; }
+.lede { color: var(--muted); max-width: 90ch; font-size: 1.02rem; }
+
+/* generic pieces */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: transparent; padding: 7px 14px; cursor: pointer; border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 7px 14px; cursor: pointer; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; min-width: 7.2em; }
+select { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 8px; max-width: 100%; }
+label.field { display: flex; flex-direction: column; gap: 3px; font-size: 0.8rem; color: var(--muted); min-width: 0; }
+label.field select { font-size: 0.95rem; color: var(--ink); }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.takeaway { margin: 12px 0 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: var(--surface-2); border-radius: 0 10px 10px 0; font-weight: 600; }
+.honest { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+.honest span { font-size: 0.82rem; background: var(--warn-bg); color: var(--warn); border-radius: 999px; padding: 4px 12px; }
+.small { font-size: 0.85rem; color: var(--muted); }
+.chip { display: inline-block; border-radius: 999px; padding: 3px 12px; font-weight: 700; font-size: 0.85rem; }
+.chip.supported { background: var(--good-bg); color: var(--good); }
+.chip.not-supported { background: var(--bad-bg); color: var(--bad); }
+.chip.inconclusive { background: var(--warn-bg); color: var(--warn); }
+.chip.neutral { background: var(--surface-2); color: var(--muted); }
+
+/* watch a day */
+.transport { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; }
+.transport .slider { flex: 1 1 320px; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.transport input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); height: 28px; }
+.clock { font-family: var(--mono); font-size: 1.7rem; font-weight: 700; min-width: 3.4em; text-align: center; font-variant-numeric: tabular-nums; }
+.panels { margin-top: 12px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+.panels.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.panel { display: grid; gap: 10px; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; }
+.panels.two .panel { grid-template-columns: minmax(0, 1fr); }
+.panel-head { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.panel-head .tag { background: var(--accent); color: var(--accent-ink); font-weight: 800; border-radius: 8px; padding: 4px 10px; align-self: center; }
+.map-wrap { position: relative; border: 1px solid var(--line); border-radius: 10px; background: var(--map-bg); height: clamp(380px, 70vh, 780px); overflow: hidden; }
+.panels.two .map-wrap { height: clamp(340px, 62vh, 640px); }
+.map-wrap svg { width: 100%; height: 100%; display: block; }
+.map-clock { position: absolute; left: 10px; top: 8px; font-family: var(--mono); font-weight: 700; font-size: 1.05rem; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 2px 10px; }
+.map-tip { position: fixed; pointer-events: none; z-index: 60; background: var(--ink); color: var(--bg); border-radius: 8px; padding: 6px 10px; font-size: 0.85rem; max-width: 280px; box-shadow: var(--shadow); }
+.zone { stroke: var(--zone-line); stroke-width: 0.6px; vector-effect: non-scaling-stroke; fill-rule: evenodd; }
+.zone.out { fill: var(--outside); }
+.zone.in { fill: var(--demand); }
+.zone.in:hover, .zone.out:hover { stroke: var(--ink); stroke-width: 1.4px; }
+.outline { fill: none; stroke: var(--ink); stroke-width: 2.2px; vector-effect: non-scaling-stroke; pointer-events: none; fill-rule: evenodd; }
+.outline.other { stroke: var(--muted); stroke-width: 1.4px; stroke-dasharray: 6 5; opacity: 0.8; }
+.car { stroke: var(--surface); stroke-width: 0.8px; vector-effect: non-scaling-stroke; }
+.car.idle { fill: var(--car-idle); }
+.car.loaded { fill: var(--car-loaded); }
+.car.empty { fill: var(--car-empty); }
+.ring-lost { fill: none; stroke: var(--lost); stroke-width: 2.4px; vector-effect: non-scaling-stroke; }
+.ring-ok { fill: none; stroke: var(--car-loaded); stroke-width: 1.4px; vector-effect: non-scaling-stroke; }
+.board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.panels.two .board { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.stat { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.stat .k { font-size: 0.78rem; color: var(--muted); }
+.stat .v { font-size: 1.28rem; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stat.big { grid-column: span 2; background: var(--accent); color: var(--accent-ink); }
+.stat.big .k { color: inherit; opacity: 0.85; }
+.stat.big .v { font-size: 1.7rem; }
+.stat .v.neg { color: var(--bad); }
+.stat.big .v.neg { color: inherit; }
+.stat.lost .v { color: var(--lost); }
+.checkline { grid-column: 1 / -1; font-size: 0.85rem; color: var(--muted); }
+.checkline b.ok { color: var(--good); }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 12px; align-items: center; font-size: 0.9rem; }
+.legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-right: 6px; }
+.legend .ramp { display: inline-block; width: 120px; height: 12px; border-radius: 3px; vertical-align: -1px; border: 1px solid var(--line); background: linear-gradient(90deg, var(--map-bg), var(--demand)); }
+.diffbox { margin-top: 12px; }
+
+/* compare */
+.chartbox { margin-top: 12px; }
+.chartbox svg { display: block; max-width: 100%; }
+.tx { fill: var(--muted); font-size: 15px; font-family: var(--font); }
+.tx.ink { fill: var(--ink); }
+.tx.bold { font-weight: 700; fill: var(--ink); }
+.gridline { stroke: var(--line); stroke-width: 1; }
+.axisline { stroke: var(--muted); stroke-width: 1; }
+.zeroline { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.dot { cursor: pointer; }
+.median { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
+.rangeline { stroke: var(--muted); stroke-width: 2; opacity: 0.5; }
+table.simple { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+table.simple th, table.simple td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+table.simple th { color: var(--muted); font-weight: 600; }
+.tablewrap { overflow-x: auto; }
+details { margin-top: 12px; }
+summary { cursor: pointer; font-weight: 600; }
+
+/* hypotheses */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); margin-top: 14px; }
+.hcard { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.hcard header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; justify-content: space-between; }
+.hcard .claim { font-size: 1.05rem; font-weight: 600; }
+.hcard .group h4 { font-size: 0.9rem; color: var(--muted); margin-bottom: 4px; }
+.minis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mini { border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; min-width: 0; }
+.mini .t { font-size: 0.82rem; color: var(--muted); display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+.mini .t b { color: var(--ink); }
+.mini svg { display: block; width: 100%; }
+.mean { background: var(--surface-2); border-radius: 10px; padding: 8px 12px; font-size: 0.95rem; }
+.mean b { font-weight: 700; }
+
+/* forecast */
+.two-col { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); margin-top: 14px; }
+.bar-row { display: grid; grid-template-columns: minmax(7em, 11em) minmax(0, 1fr) 3.4em; gap: 10px; align-items: center; margin: 6px 0; font-size: 0.95rem; }
+.bar-row .bar { height: 14px; border-radius: 4px; background: var(--c1); }
+.bar-row .bar.best { background: var(--c3); }
+.bar-row code { font-family: var(--mono); font-size: 0.9em; }
+.toggles { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 8px 0; font-size: 0.92rem; }
+.toggles label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.toggles .sw { width: 22px; height: 4px; border-radius: 2px; display: inline-block; }
+
+/* how it works */
+.pipeline { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
+.step { min-width: 0; position: relative; }
+.step:nth-child(4n) .arrow { display: none; }
+.step .n { display: inline-flex; width: 1.7em; height: 1.7em; border-radius: 50%; background: var(--accent); color: var(--accent-ink); align-items: center; justify-content: center; font-weight: 700; margin-right: 8px; font-size: 0.9rem; flex: none; }
+.step h3 { display: flex; align-items: center; font-size: 1rem; margin-bottom: 6px; }
+.step p { font-size: 0.9rem; color: var(--muted); margin: 0; }
+.step .arrow { position: absolute; right: -16px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 800; z-index: 2; background: var(--bg); border-radius: 50%; width: 18px; text-align: center; line-height: 18px; font-size: 14px; }
+.plans-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); margin-top: 10px; }
+.plans-list .card h3 { margin-bottom: 4px; }
+.formula { font-family: var(--mono); background: var(--surface-2); border-radius: 8px; padding: 8px 12px; font-size: 0.95rem; margin: 6px 0; overflow-x: auto; }
+
+@media (max-width: 900px) {
+  .panel { grid-template-columns: minmax(0, 1fr); }
+  .panels.two { grid-template-columns: minmax(0, 1fr); }
+  .panels.two .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .map-wrap, .panels.two .map-wrap { height: clamp(320px, 60vh, 560px); }
+  .step .arrow { display: none; }
+  .pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .minis { grid-template-columns: minmax(0, 1fr); }
+  .pipeline { grid-template-columns: minmax(0, 1fr); }
+  .clock { font-size: 1.3rem; }
+  h1 { font-size: 1.35rem; }
+}
+@media print { .tab[hidden] { display: block !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Where should the robotaxis wait?</h1>
+      <p class="sub">Profit-driven fleet placement, tested on New York Uber and Lyft trips as a stand-in for robotaxi demand. This page replays the simulator and shows every result.</p>
+    </div>
+    <button class="theme-btn" id="themeBtn" type="button" aria-label="Change colour theme">Theme: auto</button>
+  </header>
+  <nav class="tabbar" role="tablist" aria-label="Sections">
+    <button role="tab" id="t-watch" data-tab="watch" type="button">Watch a day</button>
+    <button role="tab" id="t-compare" data-tab="compare" type="button">Compare the plans</button>
+    <button role="tab" id="t-hypotheses" data-tab="hypotheses" type="button">Did the hypotheses hold?</button>
+    <button role="tab" id="t-forecast" data-tab="forecast" type="button">Forecast and drift</button>
+    <button role="tab" id="t-how" data-tab="how" type="button">How it works</button>
+  </nav>
+
+  <!-- ============ 1. WATCH A DAY ============ -->
+  <section class="tab" id="tab-watch" role="tabpanel" aria-labelledby="t-watch" hidden>
+    <h2>Watch a day</h2>
+    <p class="lede">One real simulated day, <b id="dayLabel"></b>. Each dot is a robotaxi. The map is shaded by how many ride requests the zone gets in the current hour. Press Play, or drag the time slider. The scoreboard counts everything from midnight to the clock time.</p>
+    <div class="card">
+      <div class="row">
+        <div class="seg" id="modeSeg" role="group" aria-label="Number of maps">
+          <button type="button" data-mode="one" aria-pressed="true">One map</button>
+          <button type="button" data-mode="two" aria-pressed="false">Compare two side by side</button>
+        </div>
+        <div class="row" id="presets" hidden>
+          <button class="btn" type="button" data-preset="areas">Same plan, two areas</button>
+          <button class="btn" type="button" data-preset="plans">Same area, two plans</button>
+          <button class="btn" type="button" data-preset="fleets">Same plan, 25 vs 100 cars</button>
+        </div>
+        <label class="small"><input type="checkbox" id="zoomBox" checked> Zoom to the launch area</label>
+      </div>
+      <p class="small" style="margin:8px 0 0">Both maps see exactly the same requests that day (same seed), so any difference comes from the area, the plan or the fleet size.</p>
+    </div>
+    <div class="card transport" aria-label="Playback controls">
+      <button class="btn primary" id="playBtn" type="button">Play</button>
+      <button class="btn" id="backBtn" type="button" aria-label="Back 15 minutes">-15 min</button>
+      <button class="btn" id="fwdBtn" type="button" aria-label="Forward 15 minutes">+15 min</button>
+      <div class="seg" id="speedSeg" role="group" aria-label="Speed">
+        <button type="button" data-speed="1" aria-pressed="true">1x</button>
+        <button type="button" data-speed="4" aria-pressed="false">4x</button>
+        <button type="button" data-speed="16" aria-pressed="false">16x</button>
+      </div>
+      <div class="slider">
+        <div class="clock" id="clock">00:00</div>
+        <input type="range" id="timeSlider" min="0" max="1440" step="1" value="0" aria-label="Time of day">
+      </div>
+    </div>
+    <div class="panels" id="panels"></div>
+    <div class="legend" aria-label="Legend">
+      <span><i class="sw" style="background:var(--car-idle)"></i>Car waiting</span>
+      <span><i class="sw" style="background:var(--car-loaded)"></i>Car carrying a rider</span>
+      <span><i class="sw" style="background:var(--car-empty)"></i>Car driving empty (to a pickup or to a better spot)</span>
+      <span><i class="sw" style="background:none;border:3px solid var(--lost)"></i>Request lost (flashes red)</span>
+      <span><i class="ramp"></i> Zone shading: 0 to <b id="maxDemand">-</b> requests in the hour</span>
+      <span class="small">1x = one 15-minute step per second</span>
+    </div>
+    <div class="diffbox" id="diffbox"></div>
+    <p class="takeaway" id="watchTakeaway">Takeaway</p>
+    <div class="honest" data-honest></div>
+  </section>
+
+  <!-- ============ 2. COMPARE ============ -->
+  <section class="tab" id="tab-compare" role="tabpanel" aria-labelledby="t-compare" hidden>
+    <h2>Compare the plans</h2>
+    <p class="lede">The same simulator run on the 57 main test days (1 November to 31 December 2024, holidays and the clock-change day reported separately). Each small dot is one day, the black bar is the median day.</p>
+    <div class="card">
+      <div class="row">
+        <div class="seg" id="cmpView" role="group" aria-label="What to compare">
+          <button type="button" data-view="plans" aria-pressed="true">Compare plans</button>
+          <button type="button" data-view="areas" aria-pressed="false">Compare areas</button>
+        </div>
+        <label class="field" id="cmpAreaField">Area<select id="cmpArea"></select></label>
+        <label class="field" id="cmpPlanField" hidden>Plan<select id="cmpPlan"></select></label>
+        <div class="field">Fleet size
+          <div class="seg" id="cmpFleet" role="group" aria-label="Fleet size"></div>
+        </div>
+        <label class="field">Measure<select id="cmpMetric"></select></label>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="seg" id="cmpMode" role="group" aria-label="Days shown">
+          <button type="button" data-mode="all" aria-pressed="true">All 57 days</button>
+          <button type="button" data-mode="day" aria-pressed="false">Pick a day</button>
+        </div>
+        <div class="row" id="cmpDayRow" hidden>
+          <button class="btn" type="button" id="cmpPrev" aria-label="Previous day">&larr;</button>
+          <label class="field">Day<select id="cmpDay"></select></label>
+          <button class="btn" type="button" id="cmpNext" aria-label="Next day">&rarr;</button>
+          <button class="btn" type="button" id="cmpDemoDay">Jump to the day on the map tab</button>
+        </div>
+      </div>
+    </div>
+    <p class="takeaway" id="cmpTakeaway">Takeaway</p>
+    <div class="card chartbox" id="cmpChart"></div>
+    <p class="small" id="cmpNote"></p>
+    <details><summary>Show the numbers as a table</summary><div class="tablewrap" id="cmpTable"></div></details>
+    <div class="honest" data-honest></div>
+  </section>
+
+  <!-- ============ 3. HYPOTHESES ============ -->
+  <section class="tab" id="tab-hypotheses" role="tabpanel" aria-labelledby="t-hypotheses" hidden>
+    <h2>Did the hypotheses hold?</h2>
+    <p class="lede">Five hypotheses were set before the test, and one more (H2b) was added after H2 failed. Each small chart shows the 57 daily differences in profit per car per day (first plan minus second plan). A dot to the right of the dashed zero line means the first plan won that day. The black bar is the median.</p>
+    <div class="cards" id="hcards"></div>
+    <div class="honest" data-honest></div>
+  </section>
+
+  <!-- ============ 4. FORECAST ============ -->
+  <section class="tab" id="tab-forecast" role="tabpanel" aria-labelledby="t-forecast" hidden>
+    <h2>Forecast and drift</h2>
+    <p class="lede">The placement plans look at a demand forecast for each zone and hour, made seven days ahead. A monitor checks every week whether the forecast error has grown or the data has changed.</p>
+    <div class="card">
+      <h3>Weekly forecast error (WAPE), October 2024 to January 2025</h3>
+      <p class="small" style="margin-bottom:0">WAPE is the total absolute forecast miss divided by the total number of requests. Lower is better.</p>
+      <div class="toggles" id="driftToggles"></div>
+      <div class="chartbox" id="driftChart"></div>
+      <p class="takeaway" id="driftTakeaway">Takeaway</p>
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <h3>What the forecast looks at (SHAP)</h3>
+        <p class="small">Average push of each input on the forecast, in requests per zone-hour.</p>
+        <div id="shapBars"></div>
+        <p class="takeaway">The forecast mostly repeats the zone's own recent history: last week, then the four-week average.</p>
+      </div>
+      <div class="card">
+        <h3>Average miss in November and December (MAE)</h3>
+        <p class="small">Requests per zone-hour, over 383,717 scored zone-hours. Lower is better.</p>
+        <div id="maeBars"></div>
+        <p class="takeaway">The model is about 18% better than copying last week and about equal to a plain four-week average.</p>
+      </div>
+    </div>
+    <div class="honest" data-honest></div>
+  </section>
+
+  <!-- ============ 5. HOW IT WORKS ============ -->
+  <section class="tab" id="tab-how" role="tabpanel" aria-labelledby="t-how" hidden>
+    <h2>How it works</h2>
+    <p class="lede">From raw trip files to the hypothesis tests, in the order the project was built.</p>
+    <div class="pipeline" id="pipeline"></div>
+    <h3 style="margin-top:22px">The six placement plans</h3>
+    <div class="plans-list" id="planList"></div>
+    <div class="two-col">
+      <div class="card">
+        <h3>Money rules</h3>
+        <div class="formula">revenue = $<span data-base></span> + $<span data-mile></span> x passenger miles</div>
+        <div class="formula">costs = tolls + $<span data-cpm></span> x all miles + $<span data-idle></span> per idle car-hour</div>
+        <div class="formula">profit = revenue - costs</div>
+        <p class="small">All miles include the empty miles a car drives to a pickup or to a new waiting spot. Tips are never counted. The price is a calibration to recorded fares, not a pricing proposal. Riders are assumed not to react to it.</p>
+      </div>
+      <div class="card">
+        <h3>Simulator rules in brief</h3>
+        <ul class="small" style="margin:0; padding-left:1.2em">
+          <li>The real hourly request counts are thinned to 1% and split into four 15-minute slots.</li>
+          <li>A request is served by an idle car in its own zone, else the nearest idle car in a neighbouring zone, else it is lost.</li>
+          <li>Trips that end outside the launch area are dropped (a geofence) and count as lost.</li>
+          <li>Each day starts fresh. Plans can move only idle cars, at the start of each hour; moves cost empty miles.</li>
+          <li>Every setting was frozen on October days before any test day was run.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="honest" data-honest></div>
+  </section>
+</div>
+<div class="map-tip" id="tip" hidden></div>
+
+<script id="demo-data" type="application/json">__DEMO_DATA_JSON__</script>
+<script>
+"use strict";
+/* ============================================================ helpers */
+const DEMO = JSON.parse(document.getElementById("demo-data").textContent);
+const META = DEMO.meta;
+const SVGNS = "http://www.w3.org/2000/svg";
+const $ = (selector, root) => (root || document).querySelector(selector);
+const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const MINUS = "−";
+
+function svg(tag, attrs, parent) {
+  const node = document.createElementNS(SVGNS, tag);
+  for (const k in attrs || {}) node.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(node);
+  return node;
+}
+function html(tag, attrs, text, parent) {
+  const node = document.createElement(tag);
+  for (const k in attrs || {}) node.setAttribute(k, attrs[k]);
+  if (text !== undefined && text !== null) node.textContent = text;
+  if (parent) parent.appendChild(node);
+  return node;
+}
+function usd(v, digits) {
+  const d = digits === undefined ? 0 : digits;
+  const s = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  return (v < 0 ? MINUS : "") + "$" + s;
+}
+function signedUsd(v, digits) { return (v > 0 ? "+" : "") + usd(v, digits); }
+function pct(v, digits) { return (v * 100).toFixed(digits === undefined ? 1 : digits) + "%"; }
+function median(values) {
+  const s = values.slice().sort((a, b) => a - b); const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+function niceTicks(lo, hi, count) {
+  const span = hi - lo || 1; const raw = span / (count || 5);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw))); const norm = raw / mag;
+  const step = (norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10) * mag;
+  const ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-6; v += step) ticks.push(+v.toFixed(10));
+  return ticks;
+}
+function wrapWords(text, maxChars) {
+  const lines = []; let line = "";
+  for (const word of text.split(" ")) {
+    if (line && (line + " " + word).length > maxChars) { lines.push(line); line = word; } else line = line ? line + " " + word : word;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+function formatClock(minutes) {
+  const m = Math.floor(clamp(minutes, 0, 1440));
+  const h = Math.floor(m / 60);
+  return String(h % 24 === 0 && m === 1440 ? 24 : h).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+}
+function dayName(iso) {
+  const d = new Date(iso + "T12:00:00Z");
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+}
+const tip = $("#tip");
+function showTip(event, text) {
+  tip.textContent = text; tip.hidden = false;
+  const x = Math.min(event.clientX + 14, window.innerWidth - 290);
+  tip.style.left = Math.max(8, x) + "px"; tip.style.top = (event.clientY + 16) + "px";
+}
+function hideTip() { tip.hidden = true; }
+
+const HONEST = [
+  "Nov-Dec 2024 was examined earlier by the team, so this is not a pristine test",
+  "1% demand scale: the fleet is sized to 1% of real requests",
+  "Price is a calibration to recorded fares ($" + META.base_charge + " + $" + META.per_mile + "/mile), not a pricing proposal",
+];
+$$("[data-honest]").forEach(box => HONEST.forEach(text => html("span", {}, text, box)));
+$$("[data-base]").forEach(n => n.textContent = META.base_charge.toFixed(2));
+$$("[data-mile]").forEach(n => n.textContent = META.per_mile.toFixed(2));
+$$("[data-cpm]").forEach(n => n.textContent = META.cost_per_mile.toFixed(2));
+$$("[data-idle]").forEach(n => n.textContent = META.idle_cost_per_hour.toFixed(0));
+$("#dayLabel").textContent = META.day_label;
+
+/* ============================================================ theme */
+const THEMES = ["auto", "light", "dark"];
+let themeIndex = 0;
+function applyTheme() {
+  const name = THEMES[themeIndex];
+  if (name === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", name);
+  $("#themeBtn").textContent = "Theme: " + name;
+}
+try { const saved = localStorage.getItem("fleet-demo-theme"); if (THEMES.includes(saved)) themeIndex = THEMES.indexOf(saved); } catch (e) { /* storage may be blocked */ }
+applyTheme();
+$("#themeBtn").addEventListener("click", () => {
+  themeIndex = (themeIndex + 1) % THEMES.length; applyTheme();
+  try { localStorage.setItem("fleet-demo-theme", THEMES[themeIndex]); } catch (e) { /* ignore */ }
+});
+
+/* ============================================================ tabs */
+const TABS = ["watch", "compare", "hypotheses", "forecast", "how"];
+const rendered = {};
+function showTab(name) {
+  if (!TABS.includes(name)) name = "watch";
+  TABS.forEach(t => {
+    $("#tab-" + t).hidden = t !== name;
+    $("#t-" + t).setAttribute("aria-selected", t === name ? "true" : "false");
+  });
+  if (name !== "watch") watch.setPlaying(false);
+  const draw = { watch: () => watch.onShow(), compare: drawCompare, hypotheses: drawHypotheses, forecast: drawForecast, how: drawHow }[name];
+  draw(); rendered[name] = true;
+  if (location.hash !== "#" + name) { try { history.replaceState(null, "", "#" + name); } catch (e) { location.hash = name; } }
+}
+$$(".tabbar button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+let resizeTimer = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { const t = TABS.find(x => !$("#tab-" + x).hidden); if (t && t !== "watch") showTab(t); }, 150);
+});
+
+/* ============================================================ WATCH A DAY */
+const ZONES = DEMO.zones;
+const ZONE_COUNT = ZONES.ids.length;
+const AREA_NAMES = { baseline: "Fixed baseline", chosen: "Simulator-chosen" };
+const AREA_FULL = {
+  baseline: "Fixed baseline: Manhattan + Downtown Brooklyn (" + META.area_sizes.baseline + " zones)",
+  chosen: "Simulator-chosen (" + META.area_sizes.chosen + " zones)",
+};
+const SLOTS = 96, SLOT_MIN = META.slot_minutes, MIN_DAY = 1440;
+
+function pathBox(d) {
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const sub of d.split("z")) {
+    const m = /^M(-?\d+) (-?\d+)l(.*)$/.exec(sub);
+    if (!m) continue;
+    let x = +m[1], y = +m[2];
+    const nums = m[3].trim().split(/\s+/).map(Number);
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    for (let i = 0; i + 1 < nums.length; i += 2) {
+      x += nums[i]; y += nums[i + 1];
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+  }
+  return [x0, y0, x1, y1];
+}
+const ZONE_BOX = ZONES.paths.map(pathBox);
+
+const AREAS = {};
+for (const key of Object.keys(DEMO.replay.areas)) {
+  const raw = DEMO.replay.areas[key];
+  const inArea = new Uint8Array(ZONE_COUNT);
+  raw.zone_positions.forEach(p => { inArea[p] = 1; });
+  const req = raw.requests;
+  const slotStart = new Int32Array(SLOTS + 1);
+  for (const s of req.slot) slotStart[s + 1]++;
+  for (let s = 0; s < SLOTS; s++) slotStart[s + 1] += slotStart[s];
+  const hourCounts = Array.from({ length: 24 }, () => new Int32Array(ZONE_COUNT));
+  let maxCount = 1;
+  req.slot.forEach((s, i) => { const c = ++hourCounts[Math.floor(s / 4)][req.origin[i]]; if (c > maxCount) maxCount = c; });
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  raw.zone_positions.forEach(p => { const b = ZONE_BOX[p]; x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]); x1 = Math.max(x1, b[2]); y1 = Math.max(y1, b[3]); });
+  const padX = (x1 - x0) * 0.04, padY = (y1 - y0) * 0.04;
+  AREAS[key] = { inArea, req, slotStart, hourCounts, maxCount, box: [x0 - padX, y0 - padY, x1 + padX, y1 + padY] };
+}
+const runCache = {};
+function getRun(areaKey, planKey, fleet) {
+  const key = areaKey + "|" + planKey + "|" + fleet;
+  if (runCache[key]) return runCache[key];
+  const raw = DEMO.replay.runs[key];
+  const cars = Array.from({ length: fleet }, () => ({ s: [], e: [], f: [], t: [], k: [] }));
+  for (let i = 0; i < raw.seg.length; i += 6) {
+    const c = cars[raw.seg[i]];
+    c.f.push(raw.seg[i + 1]); c.t.push(raw.seg[i + 2]);
+    c.s.push(raw.seg[i + 3] / META.minute_steps); c.e.push(raw.seg[i + 4] / META.minute_steps); c.k.push(raw.seg[i + 5]);
+  }
+  runCache[key] = { raw, cars, key, fleet };
+  return runCache[key];
+}
+function lastStartAtOrBefore(starts, t) {
+  let lo = 0, hi = starts.length - 1, ans = -1;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (starts[mid] <= t) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+  return ans;
+}
+function scoreboard(run, t) {
+  const c = run.raw.cum;
+  const k = clamp(Math.floor((t - SLOT_MIN / 2) / SLOT_MIN) + 1, 0, SLOTS);
+  const i = Math.min(Math.floor(t / SLOT_MIN), SLOTS - 1);
+  const f = clamp((t - i * SLOT_MIN) / SLOT_MIN, 0, 1);
+  const idle = c.idle_cost[i] + (c.idle_cost[i + 1] - c.idle_cost[i]) * f;
+  const served = c.served[k], lost = c.lost[k], requests = served + lost;
+  const revenue = c.revenue[k], tolls = c.tolls[k], mile = c.mile_cost[k];
+  const miles = c.passenger_miles[k] + c.empty_miles[k];
+  const profit = revenue - tolls - mile - idle;
+  return { requests, served, lost, servedShare: requests ? served / requests : null, revenue, tolls, mile, idle,
+    profit, emptyShare: miles ? c.empty_miles[k] / miles : null, perCar: profit / run.fleet };
+}
+function checkAgainstSimulator(run) {
+  const b = scoreboard(run, MIN_DAY), s = run.raw.sim;
+  const close = (a, c) => Math.abs(a - c) <= 0.02;
+  return b.requests === s.requests && b.served === s.served && close(b.revenue, s.revenue) && close(b.tolls, s.tolls) &&
+    close(b.mile, s.mile_cost) && close(b.idle, s.idle_cost) && close(b.profit, s.profit);
+}
+
+class Panel {
+  constructor(index, host, state) {
+    this.index = index; this.state = state; this.flashes = []; this.lastHour = -1; this.lastT = 0;
+    this.root = html("div", { class: "card panel" }, null, host);
+    const head = html("div", { class: "panel-head" }, null, this.root);
+    html("span", { class: "tag" }, index === 0 ? "A" : "B", head);
+    this.areaSel = this.makeSelect(head, "Launch area", Object.keys(AREA_FULL).map(k => [k, AREA_FULL[k]]), state.area, v => { state.area = v; this.reload(); });
+    this.planSel = this.makeSelect(head, "Plan", Object.keys(META.plans).map(k => [k, META.plans[k]]), state.plan, v => { state.plan = v; this.reload(); });
+    this.fleetSel = this.makeSelect(head, "Fleet", META.fleet_sizes.map(n => [String(n), n + " cars"]), String(state.fleet), v => { state.fleet = +v; this.reload(); });
+    this.mapWrap = html("div", { class: "map-wrap" }, null, this.root);
+    this.board = html("div", { class: "board" }, null, this.root);
+    this.build();
+  }
+  makeSelect(parent, label, options, value, onChange) {
+    const wrap = html("label", { class: "field" }, label, parent);
+    const sel = html("select", {}, null, wrap);
+    options.forEach(o => { const opt = html("option", { value: o[0] }, o[1], sel); if (o[0] === value) opt.selected = true; });
+    sel.addEventListener("change", () => onChange(sel.value));
+    return sel;
+  }
+  syncSelects() { this.areaSel.value = this.state.area; this.planSel.value = this.state.plan; this.fleetSel.value = String(this.state.fleet); }
+  reload() { this.build(); watch.update(true); }
+  build() {
+    const st = this.state;
+    this.area = AREAS[st.area]; this.run = getRun(st.area, st.plan, st.fleet);
+    this.mapWrap.innerHTML = "";
+    const box = watch.zoom ? this.area.box : [0, 0, ZONES.width, ZONES.height];
+    const w = box[2] - box[0], h = box[3] - box[1];
+    this.dotR = Math.max(w, h) / (watch.zoom ? 90 : 220);
+    this.svg = svg("svg", { viewBox: box.join(" "), role: "img", "aria-label": "Map of New York taxi zones with the fleet" }, this.mapWrap);
+    this.zonePaths = [];
+    for (let z = 0; z < ZONE_COUNT; z++) {
+      const p = svg("path", { d: ZONES.paths[z], class: "zone " + (this.area.inArea[z] ? "in" : "out"), "data-z": z }, this.svg);
+      p.addEventListener("mousemove", e => this.zoneTip(e, z)); p.addEventListener("mouseleave", hideTip);
+      this.zonePaths.push(p);
+    }
+    const other = st.area === "baseline" ? "chosen" : "baseline";
+    svg("path", { d: ZONES.outlines[other], class: "outline other" }, this.svg);
+    svg("path", { d: ZONES.outlines[st.area], class: "outline" }, this.svg);
+    this.ringLayer = svg("g", {}, this.svg);
+    this.carLayer = svg("g", {}, this.svg);
+    this.flashLayer = svg("g", {}, this.svg);
+    this.cars = this.run.cars.map(() => svg("circle", { r: this.dotR, class: "car idle", cx: 0, cy: 0 }, this.carLayer));
+    this.clockBox = html("div", { class: "map-clock" }, "00:00", this.mapWrap);
+    this.board.innerHTML = "";
+    const def = [["profit_car", "Profit per car", "big"], ["profit", "Profit (all cars)", "big"], ["requests", "Requests so far"], ["served", "Served"],
+      ["lost", "Lost", "lost"], ["share", "Served share"], ["revenue", "Revenue"], ["mile", "Mile cost"], ["idle", "Idle cost"], ["tolls", "Tolls"], ["empty", "Empty-mile share"]];
+    this.stats = {};
+    def.forEach(([id, label, cls]) => {
+      const s = html("div", { class: "stat " + (cls || "") }, null, this.board);
+      html("div", { class: "k" }, label, s); this.stats[id] = html("div", { class: "v" }, "-", s);
+    });
+    this.check = html("div", { class: "checkline" }, "", this.board);
+    this.lastHour = -1; this.flashes = []; this.lastT = watch.t;
+  }
+  zoneTip(e, z) {
+    const hour = clamp(Math.floor(watch.t / 60), 0, 23);
+    const inside = this.area.inArea[z];
+    const text = ZONES.names[z] + " (" + ZONES.boroughs[z] + ")" + (inside ? ": " + this.area.hourCounts[hour][z] + " requests in the " + String(hour).padStart(2, "0") + ":00 hour" : ": outside this launch area");
+    showTip(e, text);
+  }
+  render(t, playing) {
+    const area = this.area, run = this.run, r = this.dotR;
+    const hour = clamp(Math.floor(t / 60), 0, 23);
+    if (hour !== this.lastHour) {
+      const counts = area.hourCounts[hour];
+      for (let z = 0; z < ZONE_COUNT; z++) if (area.inArea[z]) this.zonePaths[z].style.fillOpacity = (0.07 + 0.88 * Math.sqrt(counts[z] / area.maxCount)).toFixed(3);
+      this.lastHour = hour;
+    }
+    this.clockBox.textContent = formatClock(t);
+    const stack = {};
+    run.cars.forEach((car, i) => {
+      let zone, x, y, cls = "idle";
+      const j = lastStartAtOrBefore(car.s, t);
+      if (j < 0) zone = run.raw.start[i];
+      else if (t < car.e[j]) {
+        const f = (t - car.s[j]) / Math.max(car.e[j] - car.s[j], 0.01);
+        const a = f * 1, fz = car.f[j], tz = car.t[j];
+        x = ZONES.anchor_x[fz] + (ZONES.anchor_x[tz] - ZONES.anchor_x[fz]) * a; y = ZONES.anchor_y[fz] + (ZONES.anchor_y[tz] - ZONES.anchor_y[fz]) * a;
+        cls = car.k[j] === 1 ? "loaded" : "empty";
+      } else zone = car.t[j];
+      if (cls === "idle") {
+        const k = stack[zone] = (stack[zone] || 0) + 1;
+        const ang = k * 2.4, rad = r * 1.7 * Math.sqrt(k - 1);
+        x = ZONES.anchor_x[zone] + Math.cos(ang) * rad; y = ZONES.anchor_y[zone] + Math.sin(ang) * rad;
+      }
+      const c = this.cars[i];
+      c.setAttribute("cx", x.toFixed(1)); c.setAttribute("cy", y.toFixed(1));
+      if (c.dataset.cls !== cls) { c.setAttribute("class", "car " + cls); c.dataset.cls = cls; }
+    });
+    this.drawRings(t, playing);
+    this.drawBoard(t);
+    this.lastT = t;
+  }
+  drawRings(t, playing) {
+    const area = this.area, codes = this.run.raw.codes, req = area.req, r = this.dotR, now = performance.now();
+    if (playing && t > this.lastT && t - this.lastT < 200) {
+      const s0 = Math.floor((this.lastT - SLOT_MIN / 2) / SLOT_MIN) + 1, s1 = Math.floor((t - SLOT_MIN / 2) / SLOT_MIN);
+      for (let s = Math.max(s0, 0); s <= Math.min(s1, SLOTS - 1); s++) {
+        let okCount = 0;
+        for (let i = area.slotStart[s]; i < area.slotStart[s + 1]; i++) {
+          const lost = codes[i] !== "0";
+          if (!lost && okCount++ > 6) continue;
+          if (this.flashes.length > 90) break;
+          const node = svg("circle", { cx: ZONES.anchor_x[req.origin[i]], cy: ZONES.anchor_y[req.origin[i]], r: r, class: lost ? "ring-lost" : "ring-ok" }, this.flashLayer);
+          this.flashes.push({ node, born: now, lost });
+        }
+      }
+    }
+    this.flashes = this.flashes.filter(f => {
+      const age = (performance.now() - f.born) / (f.lost ? 1100 : 600);
+      if (age >= 1) { f.node.remove(); return false; }
+      f.node.setAttribute("r", (r * (1.2 + age * (f.lost ? 6 : 3))).toFixed(1)); f.node.setAttribute("opacity", (1 - age).toFixed(2));
+      return true;
+    });
+    this.ringLayer.innerHTML = "";
+    const sLast = Math.floor((t - SLOT_MIN / 2) / SLOT_MIN);
+    if (sLast >= 0 && sLast < SLOTS && t - (sLast * SLOT_MIN + SLOT_MIN / 2) < SLOT_MIN) {
+      for (let i = area.slotStart[sLast]; i < area.slotStart[sLast + 1]; i++) {
+        if (codes[i] === "0") continue;
+        svg("circle", { cx: ZONES.anchor_x[req.origin[i]], cy: ZONES.anchor_y[req.origin[i]], r: r * 2.1, class: "ring-lost", opacity: 0.85 }, this.ringLayer);
+      }
+    }
+  }
+  drawBoard(t) {
+    const b = scoreboard(this.run, t), S = this.stats;
+    const set = (id, text, neg) => { S[id].textContent = text; S[id].classList.toggle("neg", !!neg); };
+    set("profit_car", usd(b.perCar, 2), b.perCar < 0); set("profit", usd(b.profit, 0), b.profit < 0);
+    set("requests", b.requests.toLocaleString("en-US")); set("served", b.served.toLocaleString("en-US")); set("lost", b.lost.toLocaleString("en-US"));
+    set("share", b.servedShare === null ? "-" : pct(b.servedShare, 1)); set("revenue", usd(b.revenue)); set("mile", usd(b.mile)); set("idle", usd(b.idle)); set("tolls", usd(b.tolls));
+    set("empty", b.emptyShare === null ? "-" : pct(b.emptyShare, 1));
+    const s = this.run.raw.sim;
+    this.check.innerHTML = "";
+    if (t >= MIN_DAY) {
+      const ok = checkAgainstSimulator(this.run);
+      const mark = html("b", { class: ok ? "ok" : "" }, ok ? "Matches the simulator. " : "Does not match the simulator. ", this.check);
+      mark.after(document.createTextNode("End-of-day numbers rebuilt from the replay equal the simulator's own summary (profit " + usd(s.profit, 2) + ", " + s.served + " of " + s.requests + " served)."));
+    } else this.check.textContent = "At 24:00 the simulator's own summary is: profit " + usd(s.profit, 2) + ", " + s.served + " of " + s.requests + " requests served.";
+  }
+  title() { const st = this.state; return AREA_NAMES[st.area] + " area, " + META.plans[st.plan].toLowerCase() + ", " + st.fleet + " cars"; }
+}
+
+const watch = {
+  t: 0, playing: false, speed: 1, mode: "one", zoom: true, panels: [], raf: null, lastFrame: 0,
+  states: [{ area: "baseline", plan: "profit", fleet: 50 }, { area: "chosen", plan: "profit", fleet: 50 }],
+  onShow() {
+    if (!this.panels.length) this.rebuild();
+    this.update(true);
+  },
+  rebuild() {
+    const host = $("#panels"); host.innerHTML = ""; host.className = "panels" + (this.mode === "two" ? " two" : "");
+    this.panels = [];
+    const n = this.mode === "two" ? 2 : 1;
+    for (let i = 0; i < n; i++) this.panels.push(new Panel(i, host, this.states[i]));
+    $("#presets").hidden = this.mode !== "two";
+    $("#maxDemand").textContent = Math.max(...this.panels.map(p => p.area.maxCount));
+    this.update(true);
+  },
+  update(force) {
+    this.panels.forEach(p => p.render(this.t, this.playing));
+    $("#clock").textContent = formatClock(this.t);
+    const slider = $("#timeSlider"); if (+slider.value !== Math.round(this.t)) slider.value = Math.round(this.t);
+    this.fillDiff(); this.fillTakeaway();
+  },
+  fillDiff() {
+    const box = $("#diffbox"); box.innerHTML = "";
+    if (this.panels.length < 2) return;
+    const a = scoreboard(this.panels[0].run, this.t), b = scoreboard(this.panels[1].run, this.t);
+    const c = html("div", { class: "card" }, null, box);
+    html("h3", {}, "B minus A at " + formatClock(this.t), c);
+    const t = html("table", { class: "simple" }, null, html("div", { class: "tablewrap" }, null, c));
+    const head = html("tr", {}, null, html("thead", {}, null, t));
+    ["Measure", "A", "B", "B minus A"].forEach(x => html("th", {}, x, head));
+    const body = html("tbody", {}, null, t);
+    const rows = [["Profit per car", a.perCar, b.perCar, v => usd(v, 2), v => signedUsd(v, 2)], ["Served share", a.servedShare, b.servedShare, v => pct(v), (v) => (v >= 0 ? "+" : MINUS) + Math.abs(v * 100).toFixed(1) + " pts"],
+      ["Lost requests", a.lost, b.lost, v => String(v), v => (v > 0 ? "+" : v < 0 ? MINUS : "") + Math.abs(v)], ["Empty-mile share", a.emptyShare, b.emptyShare, v => pct(v), (v) => (v >= 0 ? "+" : MINUS) + Math.abs(v * 100).toFixed(1) + " pts"]];
+    rows.forEach(([name, x, y, f, d]) => {
+      const tr = html("tr", {}, null, body); html("td", {}, name, tr);
+      html("td", {}, x === null ? "-" : f(x), tr); html("td", {}, y === null ? "-" : f(y), tr);
+      html("td", {}, x === null || y === null ? "-" : d(y - x), tr);
+    });
+  },
+  fillTakeaway() {
+    const el = $("#watchTakeaway");
+    const p = this.panels;
+    if (p.length === 1) {
+      const b = scoreboard(p[0].run, this.t), s = p[0].run.raw.sim;
+      el.textContent = this.t >= MIN_DAY
+        ? "Over the whole day " + p[0].state.fleet + " cars served " + s.served + " of " + s.requests + " requests and earned " + usd(s.profit_per_car, 2) + " each."
+        : "So far " + b.served + " of " + b.requests + " requests are served; each car has earned " + usd(b.perCar, 2) + " (idle cost keeps ticking while a car waits).";
+    } else {
+      const a = scoreboard(p[0].run, this.t), b = scoreboard(p[1].run, this.t), d = b.perCar - a.perCar;
+      const leader = d === 0 ? "They are level" : (d > 0 ? "B" : "A") + " is ahead by " + usd(Math.abs(d), 2) + " per car";
+      el.textContent = leader + " at " + formatClock(this.t) + ". Both maps face the same requests, so the gap comes from the area, plan or fleet size.";
+    }
+  },
+  setPlaying(on) {
+    this.playing = on;
+    $("#playBtn").textContent = on ? "Pause" : (this.t >= MIN_DAY ? "Replay" : "Play");
+    cancelAnimationFrame(this.raf);
+    if (on) { if (this.t >= MIN_DAY) this.t = 0; this.lastFrame = performance.now(); this.raf = requestAnimationFrame(ts => this.tick(ts)); }
+  },
+  tick(ts) {
+    const dt = Math.min((ts - this.lastFrame) / 1000, 0.25); this.lastFrame = ts;
+    this.t = Math.min(MIN_DAY, this.t + dt * this.speed * SLOT_MIN);
+    this.update();
+    if (this.t >= MIN_DAY) { this.setPlaying(false); return; }
+    this.raf = requestAnimationFrame(x => this.tick(x));
+  },
+  seek(minutes) {
+    this.t = clamp(minutes, 0, MIN_DAY); this.panels.forEach(p => { p.lastT = this.t; });
+    if (!this.playing) $("#playBtn").textContent = this.t >= MIN_DAY ? "Replay" : "Play";
+    this.update();
+  },
+};
+$("#playBtn").addEventListener("click", () => watch.setPlaying(!watch.playing));
+$("#backBtn").addEventListener("click", () => watch.seek((Math.ceil(watch.t / SLOT_MIN) - 1) * SLOT_MIN));
+$("#fwdBtn").addEventListener("click", () => watch.seek((Math.floor(watch.t / SLOT_MIN) + 1) * SLOT_MIN));
+$("#timeSlider").addEventListener("input", e => watch.seek(+e.target.value));
+$$("#speedSeg button").forEach(b => b.addEventListener("click", () => {
+  watch.speed = +b.dataset.speed; $$("#speedSeg button").forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+}));
+$$("#modeSeg button").forEach(b => b.addEventListener("click", () => {
+  watch.mode = b.dataset.mode; $$("#modeSeg button").forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+  if (watch.mode === "two") Object.assign(watch.states[1], { area: "chosen", plan: watch.states[0].plan, fleet: watch.states[0].fleet });
+  watch.rebuild();
+}));
+$("#zoomBox").addEventListener("change", e => { watch.zoom = e.target.checked; watch.rebuild(); });
+$$("#presets button").forEach(b => b.addEventListener("click", () => {
+  const a = watch.states[0], c = watch.states[1], preset = b.dataset.preset;
+  if (preset === "areas") { Object.assign(a, { area: "baseline", plan: "profit", fleet: 50 }); Object.assign(c, { area: "chosen", plan: "profit", fleet: 50 }); }
+  if (preset === "plans") { Object.assign(a, { area: "baseline", plan: "stay", fleet: 50 }); Object.assign(c, { area: "baseline", plan: "profit", fleet: 50 }); }
+  if (preset === "fleets") { Object.assign(a, { area: "chosen", plan: "profit", fleet: 25 }); Object.assign(c, { area: "chosen", plan: "profit", fleet: 100 }); }
+  watch.panels.forEach(p => p.syncSelects()); watch.rebuild();
+}));
+document.addEventListener("keydown", e => {
+  if ($("#tab-watch").hidden || /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(e.target.tagName)) return;
+  if (e.key === " ") { e.preventDefault(); watch.setPlaying(!watch.playing); }
+  if (e.key === "ArrowRight") watch.seek((Math.floor(watch.t / SLOT_MIN) + 1) * SLOT_MIN);
+  if (e.key === "ArrowLeft") watch.seek((Math.ceil(watch.t / SLOT_MIN) - 1) * SLOT_MIN);
+});
+
+/* ============================================================ COMPARE */
+const CMP = DEMO.compare;
+const METRICS = {
+  profit: { label: "Profit per car per day", fmt: v => usd(v, 1), unit: "USD per car per day" },
+  served: { label: "Share of requests served", fmt: v => pct(v, 1), unit: "share of requests served" },
+  empty: { label: "Empty-mile share", fmt: v => pct(v, 1), unit: "share of all miles driven empty" },
+  idle: { label: "Idle car-hours", fmt: v => v.toFixed(0) + " h", unit: "idle car-hours per day" },
+  gap: { label: "Service gap (busy zones minus quiet zones)", fmt: v => (v >= 0 ? "+" : MINUS) + Math.abs(v * 100).toFixed(1) + " pts", unit: "served share, busy zones minus quiet zones" },
+};
+const CMP_AREAS = {
+  baseline: "Fixed baseline (71 zones)",
+  proxy: "Proxy-chosen (60 zones at 25 cars, 71 at 50 and 100)",
+  chosen: "Simulator-chosen (84 zones, profit plan only)",
+};
+const AREA_COLOUR = { baseline: "var(--c1)", proxy: "var(--c2)", chosen: "var(--c3)" };
+const cmp = { view: "plans", area: "baseline", plan: "profit_model", n: 50, metric: "profit", mode: "all", day: CMP.days.indexOf(META.day) };
+if (cmp.day < 0) cmp.day = 0;
+(function initCompare() {
+  Object.keys(CMP_AREAS).forEach(k => html("option", { value: k }, CMP_AREAS[k], $("#cmpArea")));
+  Object.keys(METRICS).forEach(k => html("option", { value: k }, METRICS[k].label, $("#cmpMetric")));
+  const planNames = Object.keys(CMP.plans);
+  planNames.forEach(k => html("option", { value: k }, CMP.plans[k], $("#cmpPlan")));
+  $("#cmpPlan").value = cmp.plan; $("#cmpArea").value = cmp.area;
+  META.fleet_sizes.forEach(n => { const b = html("button", { type: "button", "data-n": n, "aria-pressed": n === cmp.n ? "true" : "false" }, n + " cars", $("#cmpFleet")); b.addEventListener("click", () => { cmp.n = n; drawCompare(); }); });
+  CMP.days.forEach((d, i) => html("option", { value: i }, dayName(d) + (CMP.is_weekend[i] ? " (weekend)" : ""), $("#cmpDay")));
+  $("#cmpDay").value = cmp.day;
+  $("#cmpArea").addEventListener("change", e => { cmp.area = e.target.value; drawCompare(); });
+  $("#cmpPlan").addEventListener("change", e => { cmp.plan = e.target.value; drawCompare(); });
+  $("#cmpMetric").addEventListener("change", e => { cmp.metric = e.target.value; drawCompare(); });
+  $("#cmpDay").addEventListener("change", e => { cmp.day = +e.target.value; drawCompare(); });
+  $("#cmpPrev").addEventListener("click", () => { cmp.day = (cmp.day + CMP.days.length - 1) % CMP.days.length; drawCompare(); });
+  $("#cmpNext").addEventListener("click", () => { cmp.day = (cmp.day + 1) % CMP.days.length; drawCompare(); });
+  $("#cmpDemoDay").addEventListener("click", () => { cmp.day = Math.max(0, CMP.days.indexOf(META.day)); cmp.mode = "day"; drawCompare(); });
+  $$("#cmpView button").forEach(b => b.addEventListener("click", () => { cmp.view = b.dataset.view; drawCompare(); }));
+  $$("#cmpMode button").forEach(b => b.addEventListener("click", () => { cmp.mode = b.dataset.mode; drawCompare(); }));
+})();
+
+function cmpRows() {
+  const rows = [];
+  const metric = cmp.metric;
+  if (cmp.view === "plans") {
+    const prefix = cmp.area + "|", suffix = "|" + cmp.n;
+    Object.keys(CMP.series).filter(k => k.startsWith(prefix) && k.endsWith(suffix)).forEach(k => {
+      const plan = k.split("|")[1];
+      rows.push({ key: k, label: CMP.plans[plan] || plan, values: CMP.series[k][metric], order: median(CMP.series[k].profit), colour: "var(--accent)", plan });
+    });
+    rows.sort((a, b) => b.order - a.order);
+  } else {
+    ["baseline", "proxy", "chosen"].forEach(area => {
+      const k = area + "|" + cmp.plan + "|" + cmp.n;
+      if (CMP.series[k]) rows.push({ key: k, label: CMP_AREAS[area].replace(/ \(.*$/, "") + (area === "proxy" ? (cmp.n === 25 ? " (60 zones)" : " (71 zones)") : area === "chosen" ? " (84 zones)" : " (71 zones)"), values: CMP.series[k][metric], colour: AREA_COLOUR[area], area });
+    });
+  }
+  return rows;
+}
+
+function drawStrip(host, rows, metric, pick, onPick) {
+  host.innerHTML = "";
+  const W = Math.max(320, host.clientWidth - 32), narrow = W < 560;
+  const labelW = narrow ? Math.min(150, W * 0.36) : Math.min(290, W * 0.3);
+  const rowH = 58, top = 12, bottom = 40, H = top + rows.length * rowH + bottom;
+  const all = rows.flatMap(r => r.values);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi - lo) * 0.06 || 1; lo -= pad; hi += pad;
+  const x = v => labelW + (v - lo) / (hi - lo) * (W - labelW - 24);
+  const s = svg("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": metric.label + " by row" }, host);
+  niceTicks(lo, hi, narrow ? 4 : 6).forEach(v => {
+    svg("line", { x1: x(v), x2: x(v), y1: top, y2: H - bottom + 4, class: "gridline" }, s);
+    const t = svg("text", { x: x(v), y: H - bottom + 22, "text-anchor": "middle", class: "tx" }, s); t.textContent = metric.fmt(v).replace(/\.0(?=%| h|$)/, "");
+  });
+  svg("line", { x1: labelW, x2: W - 24, y1: H - bottom + 4, y2: H - bottom + 4, class: "axisline" }, s);
+  rows.forEach((row, i) => {
+    const cy = top + i * rowH + rowH / 2;
+    wrapWords(row.label, Math.floor(labelW / 8)).forEach((line, li, arr) => {
+      const t = svg("text", { x: 0, y: cy + 5 + (li - (arr.length - 1) / 2) * 17, class: "tx ink" }, s); t.textContent = line;
+    });
+    const med = median(row.values);
+    const mn = Math.min(...row.values), mx = Math.max(...row.values);
+    if (pick !== null) svg("line", { x1: x(mn), x2: x(mx), y1: cy, y2: cy, class: "rangeline" }, s);
+    row.values.forEach((v, d) => {
+      const jitter = (((d * 37) % 11) - 5) / 5 * 13;
+      const sel = pick === d;
+      if (pick !== null && sel) return;
+      const c = svg("circle", { cx: x(v), cy: pick !== null ? cy : cy + jitter, r: pick !== null ? 3.2 : 4.6, class: "dot", style: "fill:" + row.colour + ";fill-opacity:" + (pick !== null ? 0.25 : 0.55) }, s);
+      c.addEventListener("mousemove", e => showTip(e, dayName(CMP.days[d]) + ": " + metric.fmt(v) + " (click to pick this day)"));
+      c.addEventListener("mouseleave", hideTip); c.addEventListener("click", () => onPick(d));
+    });
+    svg("line", { x1: x(med), x2: x(med), y1: cy - 17, y2: cy + 17, class: "median", opacity: pick !== null ? 0.45 : 1, "stroke-dasharray": pick !== null ? "3 4" : "none" }, s);
+    if (pick === null) {
+      const t = svg("text", { x: x(med), y: cy - 21, "text-anchor": "middle", class: "tx bold" }, s); t.textContent = metric.fmt(med);
+    } else {
+      const v = row.values[pick];
+      svg("circle", { cx: x(v), cy: cy, r: 8.5, style: "fill:" + row.colour + ";stroke:var(--surface);stroke-width:2.5" }, s);
+      const t = svg("text", { x: x(v), y: cy - 15, "text-anchor": "middle", class: "tx bold" }, s); t.textContent = metric.fmt(v);
+    }
+  });
+}
+
+function drawCompare() {
+  // keep controls in step with the state
+  $$("#cmpView button").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === cmp.view ? "true" : "false"));
+  $$("#cmpMode button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === cmp.mode ? "true" : "false"));
+  $$("#cmpFleet button").forEach(b => b.setAttribute("aria-pressed", +b.dataset.n === cmp.n ? "true" : "false"));
+  $("#cmpAreaField").hidden = cmp.view !== "plans"; $("#cmpPlanField").hidden = cmp.view !== "areas";
+  $("#cmpDayRow").hidden = cmp.mode !== "day"; $("#cmpDay").value = cmp.day;
+  $("#cmpArea").value = cmp.area; $("#cmpPlan").value = cmp.plan; $("#cmpMetric").value = cmp.metric;
+  const metric = METRICS[cmp.metric], rows = cmpRows();
+  const pick = cmp.mode === "day" ? cmp.day : null;
+  drawStrip($("#cmpChart"), rows, metric, pick, d => { cmp.day = d; cmp.mode = "day"; drawCompare(); });
+  // takeaway
+  const meds = rows.map(r => ({ label: r.label, v: median(r.values), d: pick === null ? null : r.values[pick] }));
+  const sorted = meds.slice().sort((a, b) => (pick === null ? b.v - a.v : b.d - a.d));
+  let text;
+  const dayInfo = pick === null ? "" : dayName(CMP.days[pick]) + " (" + (CMP.series[rows[0].key].requests[pick]) + " requests in the area)";
+  if (rows.length === 1) text = "Only one plan was run in this area: " + rows[0].label + ", median " + metric.fmt(meds[0].v) + ".";
+  else if (pick === null) {
+    const hi = sorted[0], lo = sorted[sorted.length - 1];
+    text = cmp.view === "plans"
+      ? "With " + cmp.n + " cars, the median day is highest for " + hi.label + " (" + metric.fmt(hi.v) + ") and lowest for " + lo.label + " (" + metric.fmt(lo.v) + ")."
+      : "For this plan with " + cmp.n + " cars, the median day is highest in the " + hi.label + " area (" + metric.fmt(hi.v) + ") and lowest in the " + lo.label + " area (" + metric.fmt(lo.v) + ").";
+  } else {
+    text = "On " + dayInfo + ": highest is " + sorted[0].label + " (" + metric.fmt(sorted[0].d) + "), lowest is " + sorted[sorted.length - 1].label + " (" + metric.fmt(sorted[sorted.length - 1].d) + ").";
+  }
+  $("#cmpTakeaway").textContent = text;
+  $("#cmpNote").textContent = (pick === null ? "Each small dot is one test day. Click a dot to look at that day. " : "The big dot is the chosen day; small dots are the other days; the dashed bar is the median. ") +
+    "Measure: " + metric.unit + "." + (cmp.view === "plans" && cmp.area === "chosen" ? " The simulator-chosen area was only run for the profit plan." : "") +
+    (cmp.view === "areas" && cmp.plan !== "profit_model" ? " The simulator-chosen area was only run for the profit plan, so it is not shown for this plan." : "");
+  // table
+  const tb = $("#cmpTable"); tb.innerHTML = "";
+  const t = html("table", { class: "simple" }, null, tb); const hr = html("tr", {}, null, html("thead", {}, null, t));
+  ["Row", "Median", "Lowest day", "Highest day"].concat(pick === null ? [] : [dayName(CMP.days[pick])]).forEach(h => html("th", {}, h, hr));
+  const bd = html("tbody", {}, null, t);
+  rows.forEach(r => {
+    const tr = html("tr", {}, null, bd); html("td", {}, r.label, tr);
+    html("td", {}, metric.fmt(median(r.values)), tr); html("td", {}, metric.fmt(Math.min(...r.values)), tr); html("td", {}, metric.fmt(Math.max(...r.values)), tr);
+    if (pick !== null) html("td", {}, metric.fmt(r.values[pick]), tr);
+  });
+}
+
+/* ============================================================ HYPOTHESES */
+const HYP = DEMO.hypotheses;
+const AREA_ROLE_LABEL = { baseline: "Fixed baseline area (71 zones)", chosen: "Data-chosen (proxy) area (60 zones at 25 cars, 71 at 50 and 100)", simulator_chosen: "Simulator-chosen area (84 zones) minus fixed baseline" };
+const HYP_TEXT = [
+  { id: "H1", title: "H1: Demand is uneven", claim: "Demand differs a lot between zones and between hours of the day.", verdict: "supported", badge: "Supported (exploratory)", plain: "Zone and hour rankings are almost the same week after week (rank agreement: 0.996 for zones, 0.976 for hours), and ten of the 263 zones hold 13.3% of all requests. That gives a placement plan something to work with. It does not show that moving cars earns more.", type: "h1" },
+  { id: "H2", title: "H2: A data-chosen area beats the fixed area", claim: "A launch area chosen from past demand earns more per car than the fixed Manhattan + Downtown Brooklyn area.", verdict: "not-supported", badge: "Not supported", plain: "The areas chosen by a ride-count proxy earned less on every one of the 57 days, by about $97, $120 and $93 per car per day. Picking zones by how many rides they have did not find where a car earns the most.", groups: [["H2", "baseline"]] },
+  { id: "H2b", title: "H2b: A simulator-chosen area beats the fixed area", claim: "An area found by searching with the simulator itself (84 zones in Manhattan, Brooklyn and Queens) earns more per car than the fixed area.", verdict: "supported", badge: "Supported (post hoc, exploratory)", plain: "It earned more on all 57 days: +$62.6, +$93.4 and +$121.2 per car per day (+16.7%, +30.2%, +61.0%). It was designed after H2 failed, using only October days, so treat it as a strong lead rather than a clean confirmation.", groups: [["H2b", "simulator_chosen"]] },
+  { id: "H3", title: "H3: Profit placement beats ride-count placement", claim: "Placing idle cars where expected profit is highest earns more than placing them in proportion to expected ride count.", verdict: "not-supported", badge: "Not supported in the fixed area; supported in the chosen area", plain: "In the fixed area it helped only with 25 cars (+$20.8) and was slightly behind at 50 and 100 cars (" + MINUS + "$0.9, " + MINUS + "$4.6). In the data-chosen area it won on nearly every day at every fleet size (+19%, +6%, +10%).", groups: [["H3", "baseline"], ["H3", "chosen"]] },
+  { id: "H4", title: "H4: The forecast model beats copying last week", claim: "Placing cars with the forecast model earns more than placing them from last week's demand.", verdict: "inconclusive", badge: "Inconclusive", plain: "The gap is under one dollar per car per day (+$0.4, +$0.8, $0.0), well under 1%. The model is a little better at forecasting but that barely changes profit.", groups: [["H4", "baseline"], ["H4", "chosen"]] },
+  { id: "H5", title: "H5: Waiting or moving beats staying put", claim: "Cars that move to a busier neighbour after a trip earn more than cars that stay where the trip ended.", verdict: "not-supported", badge: "Not supported", plain: "The median difference is about zero at every fleet size (within one dollar). On many days the rule changed nothing at all.", groups: [["H5", "baseline"], ["H5", "chosen"]] },
+];
+function drawMini(host, diffs, fmt) {
+  host.innerHTML = "";
+  const W = Math.max(150, host.clientWidth), H = 96;
+  let lo = Math.min(0, ...diffs), hi = Math.max(0, ...diffs); const pad = (hi - lo) * 0.1 || 1; lo -= pad; hi += pad;
+  const x = v => 8 + (v - lo) / (hi - lo) * (W - 16);
+  const s = svg("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": "Daily differences, median " + fmt(median(diffs)) }, host);
+  const cy = 46;
+  svg("line", { x1: x(0), x2: x(0), y1: 14, y2: 74, class: "zeroline" }, s);
+  diffs.forEach((v, i) => svg("circle", { cx: x(v), cy: cy + (((i * 37) % 11) - 5) / 5 * 18, r: 3.2, style: "fill:var(--accent);fill-opacity:0.5" }, s));
+  const m = median(diffs);
+  svg("line", { x1: x(m), x2: x(m), y1: cy - 26, y2: cy + 26, class: "median" }, s);
+  const anchor = x(m) < 50 ? "start" : x(m) > W - 50 ? "end" : "middle";
+  const t = svg("text", { x: x(m), y: 11, "text-anchor": anchor, class: "tx bold" }, s); t.textContent = fmt(m);
+  const lt = svg("text", { x: 4, y: H - 6, class: "tx" }, s); lt.textContent = fmt(Math.min(...diffs));
+  const rt = svg("text", { x: W - 4, y: H - 6, "text-anchor": "end", class: "tx" }, s); rt.textContent = fmt(Math.max(...diffs));
+  const zt = svg("text", { x: x(0), y: H - 6, "text-anchor": "middle", class: "tx" }, s); zt.textContent = "0";
+}
+function drawHourBars(host, values) {
+  host.innerHTML = "";
+  const W = Math.max(260, host.clientWidth), H = 150, max = Math.max(...values);
+  const s = svg("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, role: "img", "aria-label": "Requests per hour of the day" }, host);
+  const bw = (W - 20) / 24;
+  values.forEach((v, h) => {
+    const bh = (v / max) * (H - 40);
+    const r = svg("rect", { x: 10 + h * bw + 1, y: H - 22 - bh, width: bw - 2, height: bh, rx: 2, style: "fill:var(--demand)" }, s);
+    r.addEventListener("mousemove", e => showTip(e, String(h).padStart(2, "0") + ":00: " + v.toLocaleString("en-US") + " requests (all 263 zones)")); r.addEventListener("mouseleave", hideTip);
+  });
+  [0, 6, 12, 18, 23].forEach(h => { const t = svg("text", { x: 10 + h * bw + bw / 2, y: H - 6, "text-anchor": "middle", class: "tx" }, s); t.textContent = String(h).padStart(2, "0"); });
+  const pk = values.indexOf(max); const t = svg("text", { x: 10 + pk * bw + bw / 2, y: H - 26 - (max / max) * (H - 40) , "text-anchor": pk > 18 ? "end" : "middle", class: "tx bold" }, s); t.textContent = "peak " + String(pk).padStart(2, "0") + ":00";
+}
+function drawHypotheses() {
+  const host = $("#hcards"); host.innerHTML = "";
+  HYP_TEXT.forEach(h => {
+    const card = html("article", { class: "card hcard" }, null, host);
+    const head = html("header", {}, null, card);
+    html("h3", {}, h.title, head); html("span", { class: "chip " + h.verdict }, h.badge, head);
+    html("div", { class: "claim" }, h.claim, card);
+    if (h.type === "h1") {
+      const box = html("div", { class: "group" }, null, card);
+      html("h4", {}, "Requests per hour of the day, all 263 zones, " + META.day_label, box);
+      drawHourBars(html("div", {}, null, box), DEMO.forecast.day_hour_requests);
+      html("div", { class: "small" }, "Rank agreement (Kendall's W) across 33 complete weeks: " + HYP.h1.kendall_w_zones + " for zones, " + HYP.h1.kendall_w_hours + " for hours. Share mismatch: " + HYP.h1.share_mismatch_zones_percent + "% for zones, " + HYP.h1.share_mismatch_hours_percent + "% for hours.", box);
+    } else {
+      h.groups.forEach(([id, role]) => {
+        const cards = HYP.cards.filter(c => c.hypothesis === id && c.area_role === role).sort((a, b) => a.n_cars - b.n_cars);
+        const group = html("div", { class: "group" }, null, card);
+        html("h4", {}, h.groups.length > 1 || id === "H2" || id === "H2b" ? (id === "H2" ? "Data-chosen (proxy) area minus fixed baseline area" : AREA_ROLE_LABEL[role]) : "", group);
+        const minis = html("div", { class: "minis" }, null, group);
+        cards.forEach(c => {
+          const m = html("div", { class: "mini" }, null, minis);
+          const t = html("div", { class: "t" }, null, m);
+          html("b", {}, c.n_cars + " cars", t);
+          html("span", { class: "chip " + c.verdict.replace(" ", "-") }, c.verdict, t);
+          drawMini(html("div", {}, null, m), c.differences, v => signedUsd(v, 1));
+          html("div", { class: "small" }, "Median " + signedUsd(c.median_diff, 1) + " (" + (c.relative_gain >= 0 ? "+" : MINUS) + Math.abs(c.relative_gain).toFixed(1) + "%), first plan won " + Math.round(c.win_share * c.n_days) + " of " + c.n_days + " days. 95% range " + signedUsd(c.ci_low, 1) + " to " + signedUsd(c.ci_high, 1) + ".", m);
+        });
+      });
+    }
+    const mean = html("div", { class: "mean" }, null, card); html("b", {}, "What it means: ", mean); mean.append(h.plain);
+  });
+}
+
+/* ============================================================ FORECAST */
+const FC = DEMO.forecast;
+const METHOD_COLOUR = { "Model": "var(--c1)", "4-week mean": "var(--c2)", "Last week": "var(--c3)", "Frozen profile": "var(--c4)" };
+const driftOn = { "Model": true, "4-week mean": false, "Last week": false, "Frozen profile": false };
+(function initDriftToggles() {
+  const box = $("#driftToggles");
+  Object.keys(driftOn).forEach(name => {
+    const lab = html("label", {}, null, box);
+    const cb = html("input", { type: "checkbox", id: "dr-" + name.replace(/\W/g, "") }, null, lab);
+    cb.checked = driftOn[name]; if (name === "Model") cb.disabled = true;
+    html("i", { class: "sw", style: "background:" + METHOD_COLOUR[name] }, null, lab); lab.append(name);
+    cb.addEventListener("change", () => { driftOn[name] = cb.checked; drawDrift(); });
+  });
+})();
+function drawDrift() {
+  const host = $("#driftChart"); host.innerHTML = "";
+  const W = Math.max(320, host.clientWidth), H = 380, L = 48, R = 18, T = 18, B = 62;
+  const n = FC.weeks.length, names = Object.keys(driftOn).filter(k => driftOn[k]);
+  const maxY = Math.max(40, ...names.flatMap(k => FC.errors[k].wape)) * 1.05;
+  const x = i => L + (W - L - R) * (n === 1 ? 0.5 : i / (n - 1)), y = v => T + (H - T - B) * (1 - v / maxY);
+  const s = svg("svg", { width: W, height: H, viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": "Weekly forecast error against the alert limit" }, host);
+  const model = FC.errors["Model"], step = (W - L - R) / (n - 1);
+  model.alert.forEach((a, i) => { if (a) svg("rect", { x: x(i) - step / 2, y: T, width: step, height: H - T - B, style: "fill:var(--lost);fill-opacity:0.1" }, s); });
+  niceTicks(0, maxY, 5).forEach(v => {
+    svg("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "gridline" }, s);
+    const t = svg("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end", class: "tx" }, s); t.textContent = v + "%";
+  });
+  const every = W < 600 ? 3 : 2;
+  FC.weeks.forEach((w, i) => {
+    if (i % every !== 0 && i !== n - 1) return;
+    const t = svg("text", { x: x(i), y: H - B + 20, "text-anchor": "middle", class: "tx" }, s); t.textContent = dayName(w).replace(/^\w+ /, "");
+  });
+  const wl = svg("text", { x: L, y: H - 8, class: "tx" }, s); wl.textContent = "Week starting (Monday)";
+  svg("line", { x1: L, x2: W - R, y1: y(FC.model_limit), y2: y(FC.model_limit), style: "stroke:var(--lost);stroke-width:2;stroke-dasharray:7 5" }, s);
+  const lt = svg("text", { x: L + 6, y: y(FC.model_limit) - 7, class: "tx bold", style: "fill:var(--lost)" }, s); lt.textContent = "Alert limit " + FC.model_limit + "% (25% above the October level of " + FC.validation_wape + "%)";
+  names.forEach(name => {
+    const e = FC.errors[name];
+    svg("polyline", { points: e.wape.map((v, i) => x(i) + "," + y(v)).join(" "), fill: "none", style: "stroke:" + METHOD_COLOUR[name] + ";stroke-width:" + (name === "Model" ? 3 : 2) }, s);
+    e.wape.forEach((v, i) => {
+      const alert = name === "Model" && model.alert[i];
+      const c = svg("circle", { cx: x(i), cy: y(v), r: alert ? 6 : 4, style: "fill:" + (alert ? "var(--lost)" : METHOD_COLOUR[name]) + ";stroke:var(--surface);stroke-width:2" }, s);
+      c.addEventListener("mousemove", ev => showTip(ev, name + ", week of " + dayName(FC.weeks[i]) + ": " + v.toFixed(1) + "%" + (name === "Model" && alert ? " (alert week)" : ""))); c.addEventListener("mouseleave", hideTip);
+    });
+  });
+  const first = FC.weeks.indexOf(FC.first_alert_week);
+  const at = svg("text", { x: x(first) - step / 2 + 4, y: T + 14, class: "tx bold", style: "fill:var(--lost)" }, s); at.textContent = "Error alert from the week of " + dayName(FC.first_alert_week).replace(/^\w+ /, "");
+  $("#driftTakeaway").textContent = "Error drift fired from the week of " + dayName(FC.first_alert_week).replace(/^\w+ /, "") + " (two weeks in a row over the limit; the run began in the Christmas week, so it is holiday-driven). Data drift did not fire: the largest PSI was " + FC.psi_max + " (" + FC.psi_feature + "), far below the alert level of " + FC.psi_alert + ".";
+}
+function drawForecast() {
+  drawDrift();
+  const shap = $("#shapBars"); shap.innerHTML = "";
+  const maxShap = Math.max(...FC.shap.map(r => r.value));
+  FC.shap.forEach(r => {
+    const row = html("div", { class: "bar-row" }, null, shap);
+    const name = html("span", {}, null, row); html("code", {}, r.feature, name);
+    const track = html("div", {}, null, row); const bar = html("div", { class: "bar" }, null, track); bar.style.width = (r.value / maxShap * 100) + "%";
+    html("span", { class: "num" }, r.value.toFixed(1), row);
+  });
+  const mae = $("#maeBars"); mae.innerHTML = "";
+  const best = Math.min(...FC.mae.map(r => r.mae)), maxMae = Math.max(...FC.mae.map(r => r.mae));
+  FC.mae.forEach(r => {
+    const row = html("div", { class: "bar-row" }, null, mae); html("span", {}, r.method, row);
+    const track = html("div", {}, null, row); const bar = html("div", { class: "bar" + (r.mae === best ? " best" : "") }, null, track); bar.style.width = (r.mae / maxMae * 100) + "%";
+    html("span", { class: "num" }, r.mae.toFixed(2), row);
+  });
+}
+
+/* ============================================================ HOW IT WORKS */
+function drawHow() {
+  const steps = [
+    ["Raw sources", "NYC Uber and Lyft trip records for 2024 (259.9 million trips), weather, holidays and the 263 taxi-zone shapes."],
+    ["Spark ETL and single source of truth", "Cleans the trips and builds one table with a row per zone and hour (2,505,864 rows). Everything downstream reads this table."],
+    ["EDA and H1", "Looks at how demand varies by zone, hour and day, and tests that it differs a lot (H1)."],
+    ["Forecast", "Gradient boosting predicts requests per zone and hour seven days ahead, using demand lags only. Trained Jan-Aug, tuned Sep-Oct."],
+    ["Launch area", "Chooses which zones the fleet serves: the fixed baseline, a data-chosen area, and later a simulator-chosen area."],
+    ["Fleet simulator", "Replays a day in 15-minute steps with 25, 50 or 100 cars, one common price, and the plan under test."],
+    ["H2 to H5 tests", "Runs every plan on 57 test days with settings frozen on October, and compares them day by day (Wilcoxon test)."],
+    ["Drift check", "Watches weekly forecast error and the input data through January 2025."],
+  ];
+  const host = $("#pipeline"); host.innerHTML = "";
+  steps.forEach((s, i) => {
+    const card = html("div", { class: "card step" }, null, host);
+    const h = html("h3", {}, null, card); html("span", { class: "n" }, String(i + 1), h); h.append(s[0]);
+    html("p", {}, s[1], card);
+    if (i < steps.length - 1) html("span", { class: "arrow", "aria-hidden": "true" }, "›", card);
+  });
+  const plans = [
+    ["Stay put", "Cars wait where their last trip ended."],
+    ["Wait or move", "A car that just finished a trip drives empty to its busiest neighbour if its own zone's forecast is much lower."],
+    ["Ride-count placement", "At the start of each hour, idle cars are spread over zones in proportion to forecast requests."],
+    ["Profit placement", "At the start of each hour, idle cars are placed one at a time where the next car adds the most expected profit after the empty drive."],
+    ["Equal spread", "Idle cars are spread evenly over the zones of the launch area (extra comparison)."],
+    ["Random placement", "Idle cars go to random zones of the launch area (extra comparison)."],
+  ];
+  const list = $("#planList"); list.innerHTML = "";
+  plans.forEach(p => { const c = html("div", { class: "card" }, null, list); html("h3", {}, p[0], c); html("p", { class: "small", style: "margin:0" }, p[1], c); });
+}
+
+/* ============================================================ start */
+showTab(location.hash.slice(1) || "watch");
+</script>
+</body>
+</html>
