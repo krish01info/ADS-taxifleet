@@ -3,10 +3,9 @@
 [lint]
 select = ["E4", "E7", "E9", "F"]
 
-# Krish's EDA and forecast notebooks and their test put imports after setting an environment
+# Krish's forecast notebook and its test put imports after setting an environment
 # variable and join short statements with semicolons. This is style only, so it is allowed
 # here instead of rewriting executed notebooks.
 [lint.per-file-ignores]
-"notebooks/02_eda_h1.ipynb" = ["E402", "E702"]
 "notebooks/03_forecast.ipynb" = ["E402", "E702"]
 "tests/test_forecast_notebook.py" = ["E702"]

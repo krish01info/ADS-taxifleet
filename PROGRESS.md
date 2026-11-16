@@ -7,6 +7,21 @@ Deadline for Himank's approved Phase 1 batch: **15 November 2026**. The reposito
 ## Phase 1 correction: zone neighbours (2026-11-15, Harsh Rohila)
 
 - The released `zone_neighbours` table was incomplete (346 pairs; exact `touches()` missed shapes that overlap by slivers). Corrected to 651 pairs (1,302 directed edges, 10 connected groups). Fix in `src/phase1_sources.py` (`find_zone_neighbours`), five new tests, details in `docs/decisions.md`. Use the corrected table in `data/processed/phase1/zone_neighbours-fixed-20261115/zone_neighbours` until a corrected release is published. The 692 below and in `docs/phase1_handover.md` is superseded.
+## Simple single EDA notebook `02_eda_simple.ipynb` (2026-11-16, Krish; branch `krish/fixes2`)
+
+- New `notebooks/02_eda_simple.ipynb`: 75 cells, 7 figures, plain pandas, short cells, fresh run about 30 seconds, no errors, ruff passes. January–October only. 13 findings in one table. H1 supported on 42 complete weeks (mismatch 0.34 zones, 0.14 hours). 4-week mean beats last week (MAE 13.9 against 16.8). Placing by the 4-week-mean forecast serves 22/22/20% more requests than random at 25/50/100 cars (one-hour proxy, not profit). Rain +10.3%.
+- Settings table (what, why, when fixed) at the end of Section 1. Decision entry: `docs/decisions.md`, "One single EDA notebook".
+- `02_eda_simple` is the only EDA notebook now. Removed: `02_eda_h1`, `02b_eda_advanced`, the longer merged `02_eda` (never committed) and `tests/test_eda_notebook.py`, plus the old 02 entry in `ruff.toml`. `README.md` (Docker test command lists the deleted test file) and `docs/final_report.md` (still points at `02_eda_h1`) need their own branch.
+- Next: notebook 03d (rain inputs inside the seven folds, same 5-of-7 rule).
+
+## Advanced EDA notebook 02b built (2026-11-16, Krish; branch `krish/fixes2`) — superseded by `02_eda_simple`, file removed
+
+- New notebook `notebooks/02b_eda_advanced.ipynb` (72 cells, 19 figures, fresh run about 45 seconds, no errors, ruff passes). It covers the data card, `info()` and missing values, cleaning rule counts, summary statistics, shape of demand, outliers, time, zones, trip economics, flows, relationships, rain and weather (with LaGuardia and JFK as an independent check), holidays, H1 robustness, bias, stability, and random against our fleet. Every finding is written as Observation → Inference → Decision relevance and collected in one table.
+- Uses January–October 2024 only and only methods named in the course handout. `02_eda_h1.ipynb` is unchanged. Small outputs are in ignored `data/eda/phase2b/`.
+- Section 17 Part A is a simple one-hour proxy computed here; Part B is copied by hand from the report (Tables 7.12 and 7.13), not recomputed.
+- Added `docs/badir_framework.md` (where each BADIR stage lives in the repo, plus the three presentation stages) and a BADIR section (19) in 02b; 02b is now 73 cells.
+- Next: notebook 03d (rain inputs inside the seven folds, same 5-of-7 rule). The rain check it needed is now Section 12 of 02b.
+
 ## Walk-forward validation, steps 1–2 of 3 done (2026-11-16, Krish; branch `krish/fixes`)
 
 - Decision (pending team review, see `docs/decisions.md`): choose forecast settings with seven walk-forward monthly folds inside January–October (train Jan–Mar → validate Apr, … train Jan–Sep → validate Oct) instead of one Sep–Oct validation. Test stays Nov–Dec (already examined, so a re-check); Jan 2025 stays drift-only.
@@ -20,7 +35,7 @@ Deadline for Himank's approved Phase 1 batch: **15 November 2026**. The reposito
 
 | Phase | What | Done by | Where to look |
 |---|---|---|---|
-| 2 | EDA and revised H1 (demand differs by zone and hour) | Krish | `notebooks/02_eda_h1.ipynb` |
+| 2 | EDA and revised H1 (demand differs by zone and hour) | Krish | `notebooks/02_eda_simple.ipynb` |
 | 3 | Forecast. First version (calendar only) by Krish; Phase 3b with 7/14/21/28-day lags, gradient boosting, baselines, SHAP | Krish, Harsh Rohila | `notebooks/03_forecast.ipynb`, `notebooks/03b_forecast_with_lags.ipynb`, `src/demand_features.py` |
 | 4 | Fleet simulator (15-minute slots, six placement policies) | Harsh Rohila | `src/fleet_sim.py`, `notebooks/04_simulator.py` |
 | 5 | Launch-area optimiser, bridge links, fixed baseline area | Harsh Rohila | `src/launch_area.py`, `notebooks/05_launch_area.py` |
